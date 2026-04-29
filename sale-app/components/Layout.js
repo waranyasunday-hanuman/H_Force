@@ -52,7 +52,7 @@ export default function Layout({ children }) {
     const DOCK_ITEMS_MANAGER = [
         { name: "แดชบอร์ด", path: "/dashboard", icon: "📊" },
         { name: "Orders", path: "/orders", icon: "📋" },
-        { name: "เมนู", path: "/menu", icon: "🗂️" },
+        { name: "เมนู", path: "/menu", icon: "🗂️", isCenter: true },
         { name: "สร้าง SO", path: "/create-so", icon: "📝" },
         { name: "ลูกค้า", path: "/create-customer", icon: "🧑‍💼" },
     ];
@@ -60,7 +60,7 @@ export default function Layout({ children }) {
     const DOCK_ITEMS_SALE = [
         { name: "แดชบอร์ด", path: "/dashboard", icon: "📊" },
         { name: "Sale Work", path: "/visits", icon: "📍" },
-        { name: "เมนู", path: "/menu", icon: "🗂️" },
+        { name: "เมนู", path: "/menu", icon: "🗂️", isCenter: true },
         { name: "สร้าง SO", path: "/create-so", icon: "📝" },
         { name: "สินค้า", path: "/inventory", icon: "📦" },
     ];
@@ -79,9 +79,9 @@ export default function Layout({ children }) {
     const currentDockItems = isManager ? DOCK_ITEMS_MANAGER : DOCK_ITEMS_SALE;
 
     return (
-        <div className="min-h-screen flex flex-col relative overflow-hidden bg-gray-50/50">
+        <div className="h-[100dvh] w-full flex flex-col relative overflow-hidden bg-slate-50">
             {/* ─────────────────────────── MINIMAL HEADER ─────────────────────────── */}
-            <header className="glass-heavy sticky top-0 z-40 border-b border-white/60">
+            <header className="shrink-0 bg-white/90 backdrop-blur-md sticky top-0 z-40 border-b border-slate-200/50 shadow-sm">
                 <div className="max-w-screen-xl mx-auto px-4 h-14 flex items-center justify-between">
                     <Link href="/dashboard" className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-xl glass-accent flex items-center justify-center text-white font-extrabold text-base shadow-md">
@@ -107,16 +107,16 @@ export default function Layout({ children }) {
             </header>
 
             {/* ─────────────────────────── MAIN CONTENT ─────────────────────────── */}
-            <main className="flex-1 w-full overflow-x-hidden pb-28">
-                <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-4 animate-fade-up">
+            <main className="flex-1 w-full overflow-y-auto overflow-x-hidden pb-24 [&::-webkit-scrollbar]:hidden">
+                <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-6 animate-fade-up">
                     {children}
                 </div>
             </main>
 
             {/* ─────────────────────────── BOTTOM DOCK ─────────────────────────── */}
             {user && (
-                <div className="fixed bottom-4 left-4 right-4 z-50 flex justify-center pointer-events-none">
-                    <nav className="dock-glass rounded-[2rem] px-2 py-2 flex items-center gap-1 sm:gap-2 pointer-events-auto max-w-md w-full justify-between">
+                <div className="absolute bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-slate-200 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_40px_rgba(0,0,0,0.06)]">
+                    <nav className="flex items-center justify-around px-2 sm:px-6 h-[72px] max-w-md mx-auto w-full relative">
                         {currentDockItems.map((item) => {
                             if (item.isCenter) {
                                 const isActive = router.pathname === "/menu";
@@ -124,9 +124,9 @@ export default function Layout({ children }) {
                                     <Link
                                         key="menu"
                                         href="/menu"
-                                        className={`relative -top-4 w-14 h-14 rounded-full glass-accent flex flex-col items-center justify-center text-white shadow-xl transition-transform border-4 border-white/40 z-10 ${isActive ? "scale-110 shadow-indigo-400/50" : "hover:scale-105"}`}
+                                        className={`relative -top-6 w-16 h-16 rounded-[1.25rem] bg-gradient-to-tr from-indigo-500 to-violet-600 flex flex-col items-center justify-center text-white shadow-xl shadow-indigo-300/50 transition-transform z-10 border-[3px] border-white ${isActive ? "scale-105 ring-2 ring-indigo-200 ring-offset-1" : "hover:scale-105"}`}
                                     >
-                                        <span className="text-2xl leading-none">{item.icon}</span>
+                                        <span className="text-3xl leading-none" style={{ filter: 'drop-shadow(0px 2px 2px rgba(0,0,0,0.2))' }}>{item.icon}</span>
                                     </Link>
                                 );
                             }
@@ -137,12 +137,15 @@ export default function Layout({ children }) {
                                     key={item.path}
                                     href={item.path}
                                     className={`
-                                        flex flex-col items-center justify-center w-[4.5rem] h-12 rounded-2xl transition-all duration-200
-                                        ${isActive ? "dock-item-active scale-105" : "text-slate-500 hover:text-rose-500 hover:bg-rose-50/50"}
+                                        flex flex-col items-center justify-center w-16 h-full transition-all duration-200
+                                        ${isActive ? "text-indigo-600" : "text-slate-400 hover:text-indigo-400"}
                                     `}
                                 >
-                                    <span className="text-xl mb-0.5 leading-none">{item.icon}</span>
-                                    <span className="text-[10px] font-bold tracking-tight whitespace-nowrap">{item.name}</span>
+                                    <div className={`flex flex-col items-center justify-center transition-transform ${isActive ? "-translate-y-1" : ""}`}>
+                                        <span className={`text-[26px] mb-1 leading-none ${isActive ? "drop-shadow-md scale-110" : "opacity-80"}`}>{item.icon}</span>
+                                        <span className={`text-[11px] tracking-tight whitespace-nowrap ${isActive ? "font-extrabold" : "font-semibold"}`}>{item.name}</span>
+                                    </div>
+                                    {isActive && <div className="absolute bottom-2 w-1.5 h-1.5 rounded-full bg-indigo-600 shadow-[0_0_8px_rgba(79,70,229,0.8)]"></div>}
                                 </Link>
                             );
                         })}

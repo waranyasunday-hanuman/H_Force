@@ -17,13 +17,27 @@ export default async function handler(req, res) {
             customerCode = order.customer_code;
         } else if (planId) {
             // 1. Try to find an SO directly linked to this planId
-            const { data: orderByPlan } = await supabase
+            let { data: orderByPlan, error: planError } = await supabase
                 .from('sales_orders')
                 .select('*')
                 .eq('plan_id', planId)
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .single();
+                
+            // If plan_id column doesn't exist, it will throw an error.
+            // In that case, we search inside the JSONB items array where the safe payload stored it.
+            if (planError) {
+                const { data: fallbackOrder } = await supabase
+                    .from('sales_orders')
+                    .select('*')
+                    .contains('items', `[{"_metadata": {"plan_id": "${planId}"}}]`)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .single();
+                
+                orderByPlan = fallbackOrder;
+            }
             
             if (orderByPlan) {
                 soData = orderByPlan;

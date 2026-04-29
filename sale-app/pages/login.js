@@ -51,12 +51,8 @@ export default function LoginPage() {
 
         const userRole = profile?.role || "sale";
 
-        // 4. Redirect based on role
-        if (userRole === "manager") {
-            router.push("/dashboard");
-        } else {
-            router.push("/create-so");
-        }
+        // 4. Redirect to Menu
+        router.push("/menu");
     }
 
     return (

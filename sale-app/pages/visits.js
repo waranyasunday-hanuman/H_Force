@@ -98,6 +98,9 @@ export default function SaleWorkPage() {
     
     // Operations State
     const [selectedPurposes, setSelectedPurposes] = useState([]);
+    const [completedTasks, setCompletedTasks] = useState([]);
+    const [checkoutLocation, setCheckoutLocation] = useState(null);
+    const [gettingCheckoutLocation, setGettingCheckoutLocation] = useState(false);
     const [activeModal, setActiveModal] = useState(null);
     const [inspectionData, setInspectionData] = useState({ stock: false, display: false, competitor: false, photos: [] });
     const [collectionData, setCollectionData] = useState({ amount: 0, method: 'cash' });
@@ -243,6 +246,30 @@ export default function SaleWorkPage() {
             (err) => {
                 Swal.fire('Error', 'Please enable GPS location', 'error');
                 setGettingLocation(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    };
+
+    const getCheckoutLocation = () => {
+        setGettingCheckoutLocation(true);
+        if (!navigator.geolocation) {
+            Swal.fire('Error', 'Browser does not support GPS', 'error');
+            setGettingCheckoutLocation(false);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setCheckoutLocation({
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude,
+                    accuracy: pos.coords.accuracy
+                });
+                setGettingCheckoutLocation(false);
+            },
+            (err) => {
+                Swal.fire('Error', 'Please enable GPS location for Check-out', 'error');
+                setGettingCheckoutLocation(false);
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
@@ -1009,39 +1036,51 @@ export default function SaleWorkPage() {
                                     {selectedPurposes.length > 0 && (
                                         <div className="space-y-3 pb-8">
                                             {selectedPurposes.includes('sales') && (
-                                                <button onClick={() => setActiveModal('sales')} className="w-full p-4 bg-white border border-slate-200 rounded-2xl flex items-center justify-between group hover:border-indigo-400 transition-colors">
+                                                <button onClick={() => setActiveModal('sales')} className={`w-full p-4 bg-white border ${completedTasks.includes('sales') ? 'border-emerald-500 bg-emerald-50/50 opacity-80' : 'border-slate-200 hover:border-indigo-400'} rounded-2xl flex items-center justify-between group transition-colors`}>
                                                     <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-lg">🛍️</div>
+                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${completedTasks.includes('sales') ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-50 text-indigo-600'}`}>🛍️</div>
                                                         <div className="text-left">
                                                             <p className="font-bold text-slate-700 text-sm">สร้างใบสั่งขาย (SO)</p>
                                                             <p className="text-[10px] text-slate-400 font-medium">เปิดออเดอร์ใหม่เข้าระบบ Ecount</p>
                                                         </div>
                                                     </div>
-                                                    <span className="text-slate-300 group-hover:text-indigo-500 transition-colors">→</span>
+                                                    {completedTasks.includes('sales') ? (
+                                                        <span className="text-emerald-500 font-bold text-xl drop-shadow-sm">✅</span>
+                                                    ) : (
+                                                        <span className="text-slate-300 group-hover:text-indigo-500 transition-colors">→</span>
+                                                    )}
                                                 </button>
                                             )}
                                             {selectedPurposes.includes('collection') && (
-                                                <button onClick={() => setActiveModal('collection')} className="w-full p-4 bg-white border border-slate-200 rounded-2xl flex items-center justify-between group hover:border-emerald-400 transition-colors">
+                                                <button onClick={() => setActiveModal('collection')} className={`w-full p-4 bg-white border ${completedTasks.includes('collection') ? 'border-emerald-500 bg-emerald-50/50 opacity-80' : 'border-slate-200 hover:border-emerald-400'} rounded-2xl flex items-center justify-between group transition-colors`}>
                                                     <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-lg">💰</div>
+                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${completedTasks.includes('collection') ? 'bg-emerald-100 text-emerald-600' : 'bg-emerald-50 text-emerald-600'}`}>💰</div>
                                                         <div className="text-left">
                                                             <p className="font-bold text-slate-700 text-sm">บันทึกรับชำระหนี้</p>
                                                             <p className="text-[10px] text-slate-400 font-medium">ตัดยอดอินวอยซ์ที่ค้างชำระ</p>
                                                         </div>
                                                     </div>
-                                                    <span className="text-slate-300 group-hover:text-emerald-500 transition-colors">→</span>
+                                                    {completedTasks.includes('collection') ? (
+                                                        <span className="text-emerald-500 font-bold text-xl drop-shadow-sm">✅</span>
+                                                    ) : (
+                                                        <span className="text-slate-300 group-hover:text-emerald-500 transition-colors">→</span>
+                                                    )}
                                                 </button>
                                             )}
                                             {selectedPurposes.includes('inspection') && (
-                                                <button onClick={() => setActiveModal('inspection')} className="w-full p-4 bg-white border border-slate-200 rounded-2xl flex items-center justify-between group hover:border-blue-400 transition-colors">
+                                                <button onClick={() => setActiveModal('inspection')} className={`w-full p-4 bg-white border ${completedTasks.includes('inspection') ? 'border-emerald-500 bg-emerald-50/50 opacity-80' : 'border-slate-200 hover:border-blue-400'} rounded-2xl flex items-center justify-between group transition-colors`}>
                                                     <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-lg">📋</div>
+                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${completedTasks.includes('inspection') ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>📋</div>
                                                         <div className="text-left">
                                                             <p className="font-bold text-slate-700 text-sm">แบบฟอร์มตรวจร้าน</p>
                                                             <p className="text-[10px] text-slate-400 font-medium">เช็คสต็อก การจัดวางสินค้า</p>
                                                         </div>
                                                     </div>
-                                                    <span className="text-slate-300 group-hover:text-blue-500 transition-colors">→</span>
+                                                    {completedTasks.includes('inspection') ? (
+                                                        <span className="text-emerald-500 font-bold text-xl drop-shadow-sm">✅</span>
+                                                    ) : (
+                                                        <span className="text-slate-300 group-hover:text-blue-500 transition-colors">→</span>
+                                                    )}
                                                 </button>
                                             )}
                                             {selectedPurposes.includes('other') && (
@@ -1057,52 +1096,90 @@ export default function SaleWorkPage() {
                                                 </div>
                                             )}
                                             
-                                            <button 
-                                                onClick={async () => {
-                                                    Swal.fire({
-                                                        title: 'กำลังบันทึก Check-out...',
-                                                        allowOutsideClick: false,
-                                                        didOpen: () => Swal.showLoading()
-                                                    });
-                                                    try {
-                                                        const now = new Date().toISOString();
-                                                        
-                                                        // 1. Update Visits Table
-                                                        const { error: visitError } = await supabase
-                                                            .from('visits')
-                                                            .update({ 
-                                                                is_completed: true, 
-                                                                check_out_time: now,
-                                                                notes: otherComment 
-                                                            })
-                                                            .eq('plan_id', selectedPlan.id);
-                                                            
-                                                        if (visitError) throw visitError;
-                                                        
-                                                        // 2. Update Sales Plans Table
-                                                        const { error: planError } = await supabase
-                                                            .from('sales_plans')
-                                                            .update({ status: 'completed' })
-                                                            .eq('id', selectedPlan.id);
-                                                            
-                                                        if (planError) throw planError;
-                                                        
-                                                        Swal.fire({
-                                                            title: 'ปิดงานสำเร็จ!',
-                                                            text: 'บันทึกเวลา Check-out เรียบร้อย',
-                                                            icon: 'success',
-                                                            timer: 2000,
-                                                            showConfirmButton: false,
-                                                            customClass: { popup: 'rounded-3xl' }
-                                                        }).then(() => router.reload());
-                                                    } catch (err) {
-                                                        Swal.fire('Error', 'Check-out failed: ' + err.message, 'error');
-                                                    }
-                                                }}
-                                                className="w-full h-14 mt-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-base shadow-xl shadow-indigo-200 flex items-center justify-center gap-2 transition-all active:scale-95"
-                                            >
-                                                ✅ ยืนยันปิดงาน (Check-out)
-                                            </button>
+                                            {/* Checkout Location Section */}
+                                            <div className="mt-8 mb-6 p-5 bg-slate-50 rounded-3xl border border-slate-200">
+                                                <h5 className="text-[11px] font-black text-slate-600 mb-3 uppercase tracking-widest">พิกัด Check-out <span className="text-rose-500">*</span></h5>
+                                                {checkoutLocation ? (
+                                                    <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-100 p-3 rounded-2xl text-emerald-700 text-sm font-bold">
+                                                        <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-lg">📍</div>
+                                                        <div>
+                                                            <p>ได้รับพิกัดแล้ว</p>
+                                                            <p className="text-[9px] text-emerald-500 opacity-80 font-mono">{checkoutLocation.lat.toFixed(5)}, {checkoutLocation.lng.toFixed(5)}</p>
+                                                        </div>
+                                                        <span className="ml-auto text-xl">✅</span>
+                                                    </div>
+                                                ) : (
+                                                    <button 
+                                                        onClick={getCheckoutLocation} 
+                                                        disabled={gettingCheckoutLocation}
+                                                        className="w-full py-4 bg-white border border-slate-300 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-100 flex items-center justify-center gap-2 shadow-sm transition-colors"
+                                                    >
+                                                        {gettingCheckoutLocation ? (
+                                                            <span className="animate-pulse">⏳ กำลังค้นหาพิกัด...</span>
+                                                        ) : (
+                                                            "📍 กดเพื่อดึงพิกัด (บังคับก่อนปิดงาน)"
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {(() => {
+                                                const requiredTasks = selectedPurposes.filter(p => p !== 'other');
+                                                const isAllTasksCompleted = requiredTasks.every(t => completedTasks.includes(t));
+                                                const canCheckout = isAllTasksCompleted && checkoutLocation;
+                                                
+                                                return (
+                                                    <button 
+                                                        disabled={!canCheckout}
+                                                        onClick={async () => {
+                                                            Swal.fire({
+                                                                title: 'กำลังบันทึก Check-out...',
+                                                                allowOutsideClick: false,
+                                                                didOpen: () => Swal.showLoading()
+                                                            });
+                                                            try {
+                                                                const now = new Date().toISOString();
+                                                                
+                                                                // 1. Update Visits Table
+                                                                const { error: visitError } = await supabase
+                                                                    .from('visits')
+                                                                    .update({ 
+                                                                        is_completed: true, 
+                                                                        check_out_time: now,
+                                                                        notes: otherComment,
+                                                                        checkout_latitude: checkoutLocation.lat,
+                                                                        checkout_longitude: checkoutLocation.lng
+                                                                    })
+                                                                    .eq('plan_id', selectedPlan.id);
+                                                                    
+                                                                if (visitError) throw visitError;
+                                                                
+                                                                // 2. Update Sales Plans Table
+                                                                const { error: planError } = await supabase
+                                                                    .from('sales_plans')
+                                                                    .update({ status: 'completed' })
+                                                                    .eq('id', selectedPlan.id);
+                                                                    
+                                                                if (planError) throw planError;
+                                                                
+                                                                Swal.fire({
+                                                                    title: 'ปิดงานสำเร็จ!',
+                                                                    text: 'บันทึกเวลาและพิกัด Check-out เรียบร้อย',
+                                                                    icon: 'success',
+                                                                    timer: 2000,
+                                                                    showConfirmButton: false,
+                                                                    customClass: { popup: 'rounded-3xl' }
+                                                                }).then(() => router.reload());
+                                                            } catch (err) {
+                                                                Swal.fire('Error', 'Check-out failed: ' + err.message, 'error');
+                                                            }
+                                                        }}
+                                                        className={`w-full h-14 mt-2 rounded-2xl font-bold text-base shadow-xl flex items-center justify-center gap-2 transition-all ${canCheckout ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
+                                                    >
+                                                        {canCheckout ? '✅ ยืนยันปิดงาน (Check-out)' : 'กรุณาทำ Task และดึงพิกัดให้ครบ'}
+                                                    </button>
+                                                );
+                                            })()}
                                         </div>
                                     )}
                                 </div>
@@ -1296,7 +1373,14 @@ export default function SaleWorkPage() {
                 <div className="fixed inset-0 z-[100] bg-slate-50 flex flex-col animate-fade-in">
                     <div className="bg-white/90 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-slate-100 sticky top-0 z-10 shadow-sm">
                         <h3 className="font-bold text-slate-800">🛍️ สร้างใบสั่งขาย</h3>
-                        <button onClick={() => setActiveModal(null)} className="p-2 bg-slate-100 rounded-full text-slate-500 font-bold hover:bg-slate-200">✕ ปิด</button>
+                        <div className="flex gap-2">
+                            <button onClick={() => { setCompletedTasks(prev => [...new Set([...prev, 'sales'])]); setActiveModal(null); }} className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold hover:bg-emerald-200 flex items-center gap-1 shadow-sm">
+                                ✅ เสร็จสิ้น
+                            </button>
+                            <button onClick={() => setActiveModal(null)} className="p-1.5 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200">
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
                     </div>
                     <div className="flex-1 overflow-hidden relative">
                         <iframe 
@@ -1367,9 +1451,15 @@ export default function SaleWorkPage() {
                             </div>
                         </div>
 
-                        <button onClick={() => { Swal.fire('Success', 'บันทึกรับชำระเงินเรียบร้อย', 'success'); setActiveModal(null); }} className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-emerald-200 transition-colors active:scale-95">
-                            บันทึกรับชำระ
-                        </button>
+                        {completedTasks.includes('collection') ? (
+                            <button disabled className="w-full py-4 bg-slate-200 text-slate-500 rounded-2xl font-bold text-lg cursor-not-allowed">
+                                ✅ บันทึกแล้ว
+                            </button>
+                        ) : (
+                            <button onClick={() => { Swal.fire('Success', 'บันทึกรับชำระเงินเรียบร้อย', 'success'); setCompletedTasks(prev => [...new Set([...prev, 'collection'])]); setActiveModal(null); }} className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-emerald-200 transition-colors active:scale-95">
+                                บันทึกรับชำระ
+                            </button>
+                        )}
                     </div>
                 </div>
             )}
@@ -1404,9 +1494,15 @@ export default function SaleWorkPage() {
                             <input type="file" accept="image/*" multiple className="w-full p-2 border border-slate-200 rounded-xl text-sm bg-slate-50" />
                         </div>
 
-                        <button onClick={() => { Swal.fire('Success', 'บันทึกผลการตรวจร้านเรียบร้อย', 'success'); setActiveModal(null); }} className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-blue-200 transition-colors active:scale-95">
-                            บันทึกผลตรวจ
-                        </button>
+                        {completedTasks.includes('inspection') ? (
+                            <button disabled className="w-full py-4 bg-slate-200 text-slate-500 rounded-2xl font-bold text-lg cursor-not-allowed">
+                                ✅ บันทึกแล้ว
+                            </button>
+                        ) : (
+                            <button onClick={() => { Swal.fire('Success', 'บันทึกผลการตรวจร้านเรียบร้อย', 'success'); setCompletedTasks(prev => [...new Set([...prev, 'inspection'])]); setActiveModal(null); }} className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-blue-200 transition-colors active:scale-95">
+                                บันทึกผลตรวจ
+                            </button>
+                        )}
                     </div>
                 </div>
             )}
