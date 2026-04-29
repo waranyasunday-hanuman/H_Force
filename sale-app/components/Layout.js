@@ -79,7 +79,7 @@ export default function Layout({ children }) {
     const currentDockItems = isManager ? DOCK_ITEMS_MANAGER : DOCK_ITEMS_SALE;
 
     return (
-        <div className="h-[100dvh] w-full flex flex-col relative overflow-hidden bg-slate-50">
+        <div className="min-h-screen w-full flex flex-col relative overflow-x-hidden bg-slate-50 pb-[calc(72px+env(safe-area-inset-bottom))]">
             {/* ─────────────────────────── MINIMAL HEADER ─────────────────────────── */}
             <header className="shrink-0 bg-white/90 backdrop-blur-md sticky top-0 z-40 border-b border-slate-200/50 shadow-sm">
                 <div className="max-w-screen-xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -107,7 +107,7 @@ export default function Layout({ children }) {
             </header>
 
             {/* ─────────────────────────── MAIN CONTENT ─────────────────────────── */}
-            <main className="flex-1 w-full overflow-y-auto overflow-x-hidden pb-24 [&::-webkit-scrollbar]:hidden">
+            <main className="flex-1 w-full">
                 <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-6 animate-fade-up">
                     {children}
                 </div>
@@ -115,7 +115,7 @@ export default function Layout({ children }) {
 
             {/* ─────────────────────────── BOTTOM DOCK ─────────────────────────── */}
             {user && (
-                <div className="absolute bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-slate-200 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_40px_rgba(0,0,0,0.06)]">
+                <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-slate-200 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_40px_rgba(0,0,0,0.06)]">
                     <nav className="flex items-center justify-around px-2 sm:px-6 h-[72px] max-w-md mx-auto w-full relative">
                         {currentDockItems.map((item) => {
                             if (item.isCenter) {
