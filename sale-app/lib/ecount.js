@@ -256,7 +256,7 @@ export async function getSalesReport(sessionKey, startDate, endDate) {
 }
 
 // -----------------------------------------------
-// ดึงข้อมูลสินค้าคงคลัง (Inventory Balance)
+// ข้อมูลสินค้าคงคลัง (Inventory Balance)
 // -----------------------------------------------
 export async function getInventoryBalance(sessionKey, baseDate, warehouseCode) {
     const baseUrl = await getBaseUrl();
@@ -277,8 +277,112 @@ export async function getInventoryBalance(sessionKey, baseDate, warehouseCode) {
     );
 
     const data = await response.json();
-    // ปกติ ข้อมูลรายการจะคืนมาเป็น Array อยู่ใน data.Data.Result
     return data.Data?.Result || [];
+}
+
+// -----------------------------------------------
+// สร้างใบจ่ายสินค้า (Goods Issue)
+// issueData = { date, warehouseCode, toLocation, remarks, items: [{ productCode, quantity }] }
+// -----------------------------------------------
+export async function createGoodsIssue(sessionKey, issueData) {
+    const baseUrl = await getBaseUrl();
+    
+    const goodsIssueList = issueData.items.map(item => ({
+        BulkDatas: {
+            UPLOAD_SER_NO: "1",                     // รวมรายการในเอกสารเดียวกัน
+            IO_DATE: issueData.date,                // วันที่ (YYYYMMDD)
+            WH_CD: issueData.warehouseCode || process.env.ECOUNT_WH_CD || "ST002", // คลังต้นทาง
+            IN_WH_CD: issueData.inWarehouseCode || "", // คลังปลายทาง (สำหรับโอน)
+            PROD_CD: item.productCode,              // รหัสสินค้า
+            QTY: String(item.quantity || 1),        // จำนวนที่จ่ายออก
+            PRICE: item.price ? String(item.price) : "", // ราคา
+            REMARKS: issueData.remarks || "",       // หมายเหตุหัวเอกสาร
+            REMARKS_WIN: item.remarks || "",        // หมายเหตุรายบรรทัด (Ecount ใช้ REMARKS_WIN)
+            CUST: issueData.custCode || "",         // รหัสลูกค้า/ผู้จำหน่าย
+            EMP_CD: issueData.empCode || "",        // รหัสพนักงาน (PIC)
+            PJT_CD: issueData.pjtCode || "",        // รหัสโปรเจกต์
+        }
+    }));
+
+    const response = await fetch(
+        `${baseUrl}/Inventory/SaveGoodsIssue?SESSION_ID=${sessionKey}`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                GoodsIssueList: goodsIssueList
+            }),
+        }
+    );
+
+    const data = await response.json();
+
+    if (data.Status !== "200") {
+        throw new Error(JSON.stringify(data));
+    }
+
+    const dataObj = Array.isArray(data.Data) ? data.Data[0] : data.Data;
+    if (dataObj && dataObj.FailCnt > 0) {
+        let errMsg = "Unknown Ecount ERP Error (Goods Issue)";
+        if (dataObj.ResultDetails && dataObj.ResultDetails.length > 0) {
+            errMsg = dataObj.ResultDetails[0].TotalError || JSON.stringify(dataObj.ResultDetails);
+        }
+        throw new Error(`Ecount Error: ${errMsg}`);
+    }
+
+    return data.Data;
+}
+
+// -----------------------------------------------
+// สร้างใบรับสินค้า (Goods Receipt I)
+// receiptData = { date, inWarehouseCode, custCode, empCode, pjtCode, remarks, items: [{ productCode, quantity, price, remarks }] }
+// -----------------------------------------------
+export async function createGoodsReceipt(sessionKey, receiptData) {
+    const baseUrl = await getBaseUrl();
+    
+    const goodsReceiptList = receiptData.items.map(item => ({
+        BulkDatas: {
+            UPLOAD_SER_NO: "1",                     // รวมรายการในเอกสารเดียวกัน
+            IO_DATE: receiptData.date,              // วันที่ (YYYYMMDD)
+            WH_CD: receiptData.inWarehouseCode || process.env.ECOUNT_WH_CD || "ST002", // คลังที่รับเข้า
+            PROD_CD: item.productCode,              // รหัสสินค้า
+            QTY: String(item.quantity || 1),        // จำนวนที่รับเข้า
+            PRICE: item.price ? String(item.price) : "", // ราคา
+            REMARKS: receiptData.remarks || "",     // หมายเหตุหัวเอกสาร
+            REMARKS_WIN: item.remarks || "",        // หมายเหตุรายบรรทัด
+            CUST: receiptData.custCode || "",       // รหัสผู้จำหน่าย
+            EMP_CD: receiptData.empCode || "",      // รหัสพนักงาน
+            PJT_CD: receiptData.pjtCode || "",      // รหัสโปรเจกต์
+        }
+    }));
+
+    const response = await fetch(
+        `${baseUrl}/Inventory/SaveGoodsReceipt?SESSION_ID=${sessionKey}`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                GoodsReceiptList: goodsReceiptList
+            }),
+        }
+    );
+
+    const data = await response.json();
+
+    if (data.Status !== "200") {
+        throw new Error(JSON.stringify(data));
+    }
+
+    const dataObj = Array.isArray(data.Data) ? data.Data[0] : data.Data;
+    if (dataObj && dataObj.FailCnt > 0) {
+        let errMsg = "Unknown Ecount ERP Error (Goods Receipt)";
+        if (dataObj.ResultDetails && dataObj.ResultDetails.length > 0) {
+            errMsg = dataObj.ResultDetails[0].TotalError || JSON.stringify(dataObj.ResultDetails);
+        }
+        throw new Error(`Ecount Error: ${errMsg}`);
+    }
+
+    return data.Data;
 }
 
 // -----------------------------------------------

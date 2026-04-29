@@ -1,5 +1,5 @@
 import { supabase } from "../../lib/supabase";
-import { getSessionKey, createInvoiceAuto } from "../../lib/ecount";
+import { getSessionKey, createInvoiceAuto, createGoodsIssue } from "../../lib/ecount";
 
 export default async function handler(req, res) {
     if (req.method !== "POST") {
@@ -33,6 +33,34 @@ export default async function handler(req, res) {
         // Ecount TRX_DATE requires YYYYMMDD format without hyphens
         const formattedEcountDate = invoiceDate.replace(/-/g, "");
 
+        // --- PHASE 4: ตัดสต๊อกอัตโนมัติ (Goods Issue) ---
+        // เราจะยิงใบจ่ายสินค้าเพื่อตัดสต๊อกก่อน หรือพร้อมๆ กับการเปิดบิล
+        try {
+            // เช็คว่ามี items ไหม
+            const items = order.items || (order.metadata?.items) || [];
+            
+            if (items.length > 0) {
+                const issueData = {
+                    date: formattedEcountDate,
+                    warehouseCode: "ST002", // คลังหลัก (สามารถเปลี่ยนให้อ่านจากข้อมูลเซลส์ได้)
+                    custCode: order.customer_code,
+                    remarks: `ตัดสต๊อกอัตโนมัติจากการเปิดบิล (Ref: ${id})`,
+                    items: items.map(i => ({
+                        productCode: i.productCode,
+                        quantity: i.quantity,
+                        price: i.price,
+                        remarks: ""
+                    }))
+                };
+                console.log("Auto-deducting stock for SO", id);
+                await createGoodsIssue(sessionKey, issueData);
+            }
+        } catch (issueErr) {
+            console.error("Auto Stock Deduct Failed:", issueErr);
+            throw new Error("ตัดสต๊อกไม่สำเร็จ: " + (issueErr.message || "Unknown Error"));
+        }
+
+        // --- ลงบัญชีรายได้ (Invoice Auto) ---
         const invoiceData = {
             date: formattedEcountDate,
             customerCode: order.customer_code,

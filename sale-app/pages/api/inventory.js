@@ -6,12 +6,13 @@ export default async function handler(req, res) {
     }
 
     try {
+        const { warehouse } = req.query;
         const sessionKey = await getSessionKey();
         
         // Fetch both products and inventory balances concurrently
         const [products, balances] = await Promise.all([
             getProducts(sessionKey).catch(() => []),
-            getInventoryBalance(sessionKey).catch(() => [])
+            getInventoryBalance(sessionKey, null, warehouse).catch(() => [])
         ]);
 
         // Create a map for balances for faster lookup (O(1))

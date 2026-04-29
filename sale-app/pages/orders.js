@@ -10,6 +10,10 @@ export default function Orders() {
     const [userEmail, setUserEmail] = useState("");
     const [processingId, setProcessingId] = useState(null);
 
+    // Search & Filter
+    const [searchTerm, setSearchTerm] = useState("");
+    const [filterStatus, setFilterStatus] = useState("all");
+
     // For invoice modal
     const [showModal, setShowModal] = useState(false);
     const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -126,6 +130,23 @@ export default function Orders() {
     // manager = role สูงสุด
     const isManager = userRole === "manager";
 
+    // Computed Filtered Orders
+    const filteredOrders = orders.filter(order => {
+        // Filter by Status
+        if (filterStatus === "pending" && order.approval_status === "approved") return false;
+        if (filterStatus === "approved" && (order.approval_status !== "approved" || order.invoice_status === "invoiced")) return false;
+        if (filterStatus === "invoiced" && order.invoice_status !== "invoiced") return false;
+
+        // Filter by Search Term
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            const matchAll = JSON.stringify(order).toLowerCase().includes(term);
+            if (!matchAll) return false;
+        }
+
+        return true;
+    });
+
     return (
         <Layout>
             {/* Header */}
@@ -159,7 +180,36 @@ export default function Orders() {
                     <Loading />
                 </div>
             ) : (
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <>
+                    {/* Controls: Search & Filter */}
+                    <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                        <div className="flex-1 relative">
+                            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
+                                🔍
+                            </span>
+                            <input 
+                                type="text" 
+                                placeholder="ค้นหาจากรหัสลูกค้า, พนักงานขาย, วันที่, สถานะ..."
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm shadow-sm"
+                            />
+                        </div>
+                        <div className="sm:w-64">
+                            <select 
+                                value={filterStatus}
+                                onChange={e => setFilterStatus(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white shadow-sm cursor-pointer"
+                            >
+                                <option value="all">ทุกสถานะ</option>
+                                <option value="pending">⌛ รอตรวจสอบ</option>
+                                <option value="approved">✅ อนุมัติแล้ว (รอเปิดบิล)</option>
+                                <option value="invoiced">🧾 เปิดบิลแล้ว</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
@@ -174,7 +224,7 @@ export default function Orders() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {orders.map(order => (
+                                {filteredOrders.map(order => (
                                     <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
                                         <td className="px-6 py-4">
                                             <div className="font-semibold text-gray-900">{order.order_date}</div>
@@ -267,10 +317,12 @@ export default function Orders() {
                                     </tr>
                                 ))}
 
-                                {orders.length === 0 && (
+                                {filteredOrders.length === 0 && (
                                     <tr>
                                         <td colSpan={isManager ? "6" : "5"} className="px-6 py-12 text-center text-gray-500">
-                                            {userRole === "sale" ? "คุณยังไม่มีบิลในระบบ" : "ไม่มีบิลจำหน่ายในระบบ ณ ขณะนี้"}
+                                            {orders.length === 0 
+                                                ? (userRole === "sale" ? "คุณยังไม่มีบิลในระบบ" : "ไม่มีบิลจำหน่ายในระบบ ณ ขณะนี้")
+                                                : "ไม่พบรายการที่ตรงกับการค้นหา"}
                                         </td>
                                     </tr>
                                 )}
@@ -278,6 +330,7 @@ export default function Orders() {
                         </table>
                     </div>
                 </div>
+                </>
             )}
 
             {/* Modal for Invoice Date */}

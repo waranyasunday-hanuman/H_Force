@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Layout from "../components/Layout";
 import Loading from "../components/Loading";
+import { WAREHOUSES } from "../lib/locations";
 
 export default function Inventory() {
     const [items, setItems] = useState([]);
@@ -11,6 +12,7 @@ export default function Inventory() {
     // New Filter States
     const [filterType, setFilterType] = useState("ทั้งหมด");
     const [hideZero, setHideZero] = useState(false);
+    const [selectedWarehouse, setSelectedWarehouse] = useState("ST002"); // Default to Main
     
     // Sort State
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -18,7 +20,10 @@ export default function Inventory() {
     const fetchInventory = async () => {
         setLoading(true);
         try {
-            const res = await fetch("/api/inventory");
+            const url = selectedWarehouse 
+                ? `/api/inventory?warehouse=${selectedWarehouse}` 
+                : `/api/inventory`;
+            const res = await fetch(url);
             const data = await res.json();
             if (res.ok) {
                 setItems(data.inventory || []);
@@ -34,7 +39,7 @@ export default function Inventory() {
 
     useEffect(() => {
         fetchInventory();
-    }, []);
+    }, [selectedWarehouse]); // Re-fetch when warehouse changes
 
     // Helper: format numbers
     const formatNumber = (num) => {
@@ -134,6 +139,26 @@ export default function Inventory() {
                         </svg>
                         <span className="whitespace-nowrap">รีเฟรชข้อมูล</span>
                     </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button 
+                            onClick={() => window.location.href = '/transfer'}
+                            className="flex items-center space-x-2 bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm"
+                        >
+                            <span>🚚 โอนย้าย</span>
+                        </button>
+                        <button 
+                            onClick={() => window.location.href = '/goods-receipt'}
+                            className="flex items-center space-x-2 bg-gradient-to-r from-green-500 to-teal-600 text-white px-3 py-2 rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg"
+                        >
+                            <span>📥 รับเข้า</span>
+                        </button>
+                        <button 
+                            onClick={() => window.location.href = '/goods-issue'}
+                            className="flex items-center space-x-2 bg-gradient-to-r from-red-500 to-orange-600 text-white px-3 py-2 rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg"
+                        >
+                            <span>📤 จ่ายออก</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -157,6 +182,26 @@ export default function Inventory() {
                     {/* Filters */}
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="flex items-center space-x-2 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm">
+                            <span className="text-xs font-semibold text-gray-500">คลัง:</span>
+                            <select 
+                                value={selectedWarehouse} 
+                                onChange={(e) => setSelectedWarehouse(e.target.value)}
+                                className="text-sm border-none bg-transparent font-bold text-blue-700 outline-none cursor-pointer max-w-[150px] truncate"
+                            >
+                                <option value="">รวมทุกคลัง (ทั้งหมด)</option>
+                                <optgroup label="คลังหลัก">
+                                    {WAREHOUSES.filter(w => w.type === 'Main').map(w => (
+                                        <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                    ))}
+                                </optgroup>
+                                <optgroup label="คลังรถเซลส์ (Van)">
+                                    {WAREHOUSES.filter(w => w.type === 'Van').map(w => (
+                                        <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                    ))}
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div className="flex items-center space-x-2 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm hidden md:flex">
                             <span className="text-xs font-semibold text-gray-500">ประเภท:</span>
                             <select 
                                 value={filterType} 
