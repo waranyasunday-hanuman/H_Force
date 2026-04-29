@@ -45,24 +45,35 @@ export default function PrintSO() {
     const { order, customer } = data;
     const items = order.items || [];
     let metadata = {};
+    let fallbackMeta = {};
     const validItems = [];
+    
     items.forEach(it => {
-        if (it.isMetadata) metadata = it;
-        else validItems.push(it);
+        if (it.isMetadata) {
+            metadata = it;
+        } else if (it._metadata) {
+            fallbackMeta = it._metadata;
+        } else {
+            validItems.push(it);
+        }
     });
     
     // Calculate totals
     const subTotal = validItems.reduce((s, it) => s + (parseFloat(it.price) || 0) * (parseInt(it.quantity) || 0), 0);
     const totalAmount = parseFloat(order.total_amount) || subTotal; // In case total_amount is stored
-    const discAmt = subTotal - totalAmount; // Infer discount if total_amount < subTotal
+    const discAmt = subTotal > totalAmount ? subTotal - totalAmount : 0; 
     const depositAmt = 0; // Not strictly stored in DB right now, assume 0
     const netPayable = totalAmount - depositAmt;
 
     const fmtCurr = (v) => new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
-    const paymentLabel = { cash: "💵 เงินสด", transfer: "📱 โอนเงิน", credit: "💳 เครดิต" }[order.payment_type] || order.payment_type || "—";
     
-    const needTax = order.need_tax_invoice || metadata.needTaxInvoice;
-    const sigUrl = order.customer_signature_url || metadata.signatureUrl;
+    const pType = order.payment_type || fallbackMeta.payment_type || order.paymentType || "cash";
+    const paymentLabel = { cash: "💵 เงินสด", transfer: "📱 โอนเงิน", credit: "💳 เครดิต" }[pType] || pType || "—";
+    
+    const needTax = order.need_tax_invoice || metadata.needTaxInvoice || false;
+    const sigUrl = order.customer_signature_url || order.signatureUrl || metadata.signatureUrl;
+    const dueDate = order.due_date || fallbackMeta.due_date || "";
+    const soNumber = order.so_number || fallbackMeta.so_number || order.id || '—';
     
     const now = new Date();
     const printDate = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear() + 543}`;
@@ -127,7 +138,7 @@ export default function PrintSO() {
                         <div>วันที่เอกสาร: {soDate}</div>
                         <div>พนักงานขาย (SALE): {order.sales_person || "Seller"}</div>
                         <div style={{ marginTop: '4px', fontWeight: 'bold', color: '#fbbf24' }}>
-                            เล่มที่: _______ เลขที่: {order.so_number || order.id || '—'}
+                            เล่มที่: _______ เลขที่: {soNumber}
                         </div>
                     </div>
                 </div>
@@ -211,8 +222,8 @@ export default function PrintSO() {
                             </span></div>
                             {metadata.managerRemarks && <div style={{ marginTop: '6px', fontSize: '12px', color: '#b45309', background: '#fffbeb', padding: '4px 8px', borderRadius: '4px', borderLeft: '2px solid #f59e0b' }}>💬 อนุมัติ: {metadata.managerRemarks}</div>}
                         </div>
-                        {order.due_date && (
-                            <div className="field"><label>วันกำหนดชำระ / Due Date</label><span>{order.due_date}</span></div>
+                        {dueDate && (
+                            <div className="field"><label>วันกำหนดชำระ / Due Date</label><span>{dueDate}</span></div>
                         )}
                     </div>
                 </div>
