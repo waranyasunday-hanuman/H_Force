@@ -8,6 +8,7 @@ export default function GoodsIssue() {
     const router = useRouter();
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState("FG"); // "FG" or "RM"
     
     const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
     const [warehouseCode, setWarehouseCode] = useState("ST002");
@@ -43,13 +44,22 @@ export default function GoodsIssue() {
     }, []);
 
     const filteredProducts = useMemo(() => {
-        if (!searchTerm) return products.slice(0, 50); // Show max 50 initially
+        let currentProducts = products;
+        
+        // Filter by Tab (Ecount Type: 1 = FG, 3 = RM)
+        if (activeTab === "FG") {
+            currentProducts = currentProducts.filter(p => p.PROD_TYPE === "1");
+        } else if (activeTab === "RM") {
+            currentProducts = currentProducts.filter(p => p.PROD_TYPE === "3");
+        }
+
+        if (!searchTerm) return currentProducts.slice(0, 50); // Show max 50 initially
         const s = searchTerm.toLowerCase();
-        return products.filter(p => 
+        return currentProducts.filter(p => 
             (p.PROD_CD || "").toLowerCase().includes(s) || 
             (p.PROD_DES || "").toLowerCase().includes(s)
         ).slice(0, 50);
-    }, [products, searchTerm]);
+    }, [products, searchTerm, activeTab]);
 
     const addItem = (prod) => {
         const existing = selectedItems.find(i => i.productCode === prod.PROD_CD);
@@ -141,6 +151,22 @@ export default function GoodsIssue() {
                 </div>
             </div>
 
+            {/* TABS (FG vs Raw Mat) */}
+            <div className="flex mb-6 space-x-2 bg-gray-100 p-1.5 rounded-xl w-full max-w-md">
+                <button 
+                    onClick={() => setActiveTab("FG")} 
+                    className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === "FG" ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                >
+                    📦 สินค้าสำเร็จรูป (FG)
+                </button>
+                <button 
+                    onClick={() => setActiveTab("RM")} 
+                    className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === "RM" ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                >
+                    🏭 วัตถุดิบ (Raw Mat)
+                </button>
+            </div>
+
             {loading ? (
                 <div className="min-h-[400px] flex items-center justify-center">
                     <Loading />
@@ -180,11 +206,20 @@ export default function GoodsIssue() {
                                                 <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
                                             ))}
                                         </optgroup>
-                                        <optgroup label="อื่นๆ">
-                                            {WAREHOUSES.filter(w => w.type === 'Other').map(w => (
-                                                <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
-                                            ))}
-                                        </optgroup>
+                                        {WAREHOUSES.filter(w => w.type === 'Factory').length > 0 && (
+                                            <optgroup label="โรงงาน">
+                                                {WAREHOUSES.filter(w => w.type === 'Factory').map(w => (
+                                                    <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                                ))}
+                                            </optgroup>
+                                        )}
+                                        {WAREHOUSES.filter(w => w.type === 'Other').length > 0 && (
+                                            <optgroup label="อื่นๆ">
+                                                {WAREHOUSES.filter(w => w.type === 'Other').map(w => (
+                                                    <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                                ))}
+                                            </optgroup>
+                                        )}
                                     </select>
                                 </div>
                                 
@@ -230,6 +265,20 @@ export default function GoodsIssue() {
                                                     <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
                                                 ))}
                                             </optgroup>
+                                            {WAREHOUSES.filter(w => w.type === 'Factory').length > 0 && (
+                                                <optgroup label="โรงงาน">
+                                                    {WAREHOUSES.filter(w => w.type === 'Factory').map(w => (
+                                                        <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                                    ))}
+                                                </optgroup>
+                                            )}
+                                            {WAREHOUSES.filter(w => w.type === 'Other').length > 0 && (
+                                                <optgroup label="อื่นๆ">
+                                                    {WAREHOUSES.filter(w => w.type === 'Other').map(w => (
+                                                        <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                                    ))}
+                                                </optgroup>
+                                            )}
                                         </select>
                                     </div>
                                     <div>

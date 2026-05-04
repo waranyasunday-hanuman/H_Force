@@ -10,12 +10,7 @@ export default async function handler(req, res) {
         const sessionKey = await getSessionKey();
         const allProducts = await getProducts(sessionKey);
 
-        // แสดงเฉพาะสินค้า Finished Goods (รหัสขึ้นต้นด้วย FG)
-        const products = (allProducts || []).filter(p =>
-            (p.PROD_CD || "").toUpperCase().startsWith("FG")
-        );
-
-        res.status(200).json({ products });
+        res.status(200).json({ products: allProducts || [] });
     } catch (error) {
         console.error("API Error getProducts:", error);
         res.status(500).json({ error: "Cannot fetch products" });

@@ -1,0 +1,8 @@
+node_modules
+.next
+.env*
+*.log
+scratch/
+sale-app/.next
+sale-app/node_modules
+sale-app/.env*

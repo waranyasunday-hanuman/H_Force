@@ -12,6 +12,7 @@ export default async function handler(req, res) {
         
         // Transform Ecount data to standard format
         const customers = (ecountCustomers || []).map(c => ({
+            ...c,
             CUST_CODE: c.CUST_CODE || c.CUST || c.CUST_CD || "",
             CUST_NAME: c.CUST_NAME || c.CUST_DES || c.CUST_NM || "",
             is_ecount: true
@@ -30,8 +31,13 @@ export default async function handler(req, res) {
             .order('created_at', { ascending: false });
 
         const mapped = (dbCustomers || []).map(c => ({
+            ...c,
             CUST_CODE: c.cust_code,
             CUST_NAME: c.cust_name,
+            BUSINESS_NO: c.business_no || "",
+            JONGMOK: c.jongmok || "",
+            TEL: c.tel || "",
+            BOSS_NAME: c.boss_name || "",
             is_ecount: false
         }));
 

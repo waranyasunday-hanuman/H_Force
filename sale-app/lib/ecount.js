@@ -28,6 +28,8 @@ async function getZone() {
 
 // เราจะเก็บว่าใช้ oapi หรือ sboapi ไว้ที่นี่หลังจาก Login สำเร็จ
 let lastUsedEndpoint = "oapi"; 
+let lastUsedHost = ""; 
+let lastUsedCookie = ""; // Store session cookie
 
 // -----------------------------------------------
 // ขั้นตอนที่ 2: Login ขอ Session ID
@@ -47,7 +49,10 @@ export async function getSessionKey() {
             console.log(`Attempting login at: ${loginUrl}`);
             const response = await fetch(loginUrl, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                },
                 body: JSON.stringify({
                     COM_CODE: process.env.ECOUNT_COMPANY_CODE,
                     USER_ID: process.env.ECOUNT_USER_ID,
@@ -61,26 +66,34 @@ export async function getSessionKey() {
             
             // ตรวจสอบว่าได้ Session ID หรือไม่
             if (data.Status == 200 && data.Data?.Datas?.SESSION_ID) {
-                console.log(`Login successful via ${prefix === 'oapi' ? 'Production' : 'Sandbox'}`);
-                lastUsedEndpoint = prefix; // จำไว้ว่าตัวนี้ใช้ได้
-                return data.Data.Datas.SESSION_ID;
+                // บันทึก host ล่าสุดไว้ใช้
+                const hostUrl = data.Data.Datas.HOST_URL || "oapiia.ecount.com";
+                lastUsedHost = hostUrl;
+                lastUsedEndpoint = hostUrl.split('.')[0];
+                lastUsedCookie = (data.Data.Datas.SET_COOKIE || "").trim(); // Store the cookie and TRIM IT!
+                
+                console.log("ECOUNT Login Successful:", data.Data.Datas.SESSION_ID, "Host:", hostUrl);
+                return {
+                    sessionKey: data.Data.Datas.SESSION_ID,
+                    hostUrl: hostUrl
+                };
             } else {
-                console.log(`Login via ${prefix} returned status ${data.Status}, Code: ${data.Data?.Code}, but no Session ID.`);
+                console.warn(`Login via ${prefix} failed. Status: ${data.Status}, Error: ${JSON.stringify(data.Errors || data.Data)}`);
             }
         } catch (err) {
-            console.warn(`Login failed for ${loginUrl}:`, err.message);
+            console.error(`CRITICAL: Login fetch error for ${loginUrl}:`, err.message);
         }
     }
 
-    throw new Error("Cannot login to Ecount on any endpoint. Please check your credentials.");
+    throw new Error("Ecount Login Failed on both Production and Sandbox. Please check COM_CODE, USER_ID, and API_CERT_KEY in .env.local");
 }
 
 // -----------------------------------------------
 // ฟังก์ชัน helper: สร้าง base URL สำหรับ API อื่นๆ
 // -----------------------------------------------
-async function getBaseUrl() {
-    const zoneData = await getZone();
-    return `https://${lastUsedEndpoint}${zoneData.ZONE}${zoneData.DOMAIN}/OAPI/V2`;
+async function getBaseUrl(explicitHost) {
+    const host = explicitHost || lastUsedHost || "oapiia.ecount.com";
+    return `https://${host.toLowerCase()}/OAPI/V2`;
 }
 
 // -----------------------------------------------
@@ -93,7 +106,11 @@ export async function createCustomer(sessionKey, custData) {
         `${baseUrl}/AccountBasic/SaveBasicCust?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "Cookie": lastUsedCookie,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            },
             body: JSON.stringify({
                 CustList: [
                     {
@@ -109,6 +126,44 @@ export async function createCustomer(sessionKey, custData) {
                             EMAIL: custData.email || "",
                             ADDR: custData.addr || "",
                             REMARKS: custData.remarks || "",
+                            FAX: custData.fax || "",
+                            CUST_GROUP1: custData.custGroup1 || "",
+                            CUST_GROUP2: custData.custGroup2 || "",
+                            EMP_CD: custData.empCd || "",
+                            CUST_LIMIT: custData.custLimit ? String(custData.custLimit) : "",
+                            PRICE_GROUP: custData.priceGroup || "",
+                            PRICE_GROUP2: custData.priceGroup2 || "",
+                            POST_NO: custData.postNo || "",
+                            G_GUBUN: custData.gGubun || "01",
+                            G_BUSINESS_TYPE: custData.gBusinessType || "",
+                            G_BUSINESS_CD: custData.gBusinessCd || "",
+                            TAX_REG_ID: custData.taxRegId || "",
+                            DM_POST: custData.dmPost || "",
+                            DM_ADDR: custData.dmAddr || "",
+                            REMARKS_WIN: custData.remarksWin || "",
+                            GUBUN: custData.gubun || "11",
+                            FOREIGN_FLAG: custData.foreignFlag || "N",
+                            EXCHANGE_CODE: custData.exchangeCode || "",
+                            URL_PATH: custData.urlPath || "",
+                            OUTORDER_YN: custData.outorderYn || "N",
+                            IO_CODE_SL_BASE_YN: custData.ioCodeSlBaseYn || "Y",
+                            IO_CODE_SL: custData.ioCodeSl || "",
+                            IO_CODE_BY_BASE_YN: custData.ioCodeByBaseYn || "Y",
+                            IO_CODE_BY: custData.ioCodeBy || "",
+                            MANAGE_BOND_NO: custData.manageBondNo || "B",
+                            MANAGE_DEBIT_NO: custData.manageDebitNo || "B",
+                            O_RATE: custData.oRate ? String(custData.oRate) : "",
+                            I_RATE: custData.iRate ? String(custData.iRate) : "",
+                            CUST_LIMIT_TERM: custData.custLimitTerm ? String(custData.custLimitTerm) : "",
+                            CONT1: custData.cont1 || "",
+                            CONT2: custData.cont2 || "",
+                            CONT3: custData.cont3 || "",
+                            CONT4: custData.cont4 || "",
+                            CONT5: custData.cont5 || "",
+                            CONT6: custData.cont6 || "",
+                            NO_CUST_USER1: custData.noCustUser1 ? String(custData.noCustUser1) : "",
+                            NO_CUST_USER2: custData.noCustUser2 ? String(custData.noCustUser2) : "",
+                            NO_CUST_USER3: custData.noCustUser3 ? String(custData.noCustUser3) : ""
                         }
                     }
                 ]
@@ -140,12 +195,17 @@ export async function getCustomers(sessionKey) {
     const baseUrl = await getBaseUrl();
 
     const response = await fetch(
-        `${baseUrl}/AccountBasic/GetListCust?SESSION_ID=${sessionKey}`,
+        `${baseUrl}/AccountBasic/GetListCust`,
         {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "Cookie": lastUsedCookie,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            },
             body: JSON.stringify({
                 COM_CODE: process.env.ECOUNT_COMPANY_CODE,
+                SESSION_ID: sessionKey,
                 IsPaging: false,
                 Condition: ""
             }),
@@ -153,6 +213,11 @@ export async function getCustomers(sessionKey) {
     );
 
     const data = await response.json();
+    
+    if (data.Status !== "200" && data.Status !== 200) {
+        throw new Error(`Ecount GetListCust Error: ${data.Status} - ${JSON.stringify(data.Errors || data)}`);
+    }
+
     // คืนค่ารายการลูกค้ากลับไป (ใช้ค่า CUST_NAME หรือ CUST_DES ตามลำดับ)
     return (data.Data?.Result || []).map(c => ({
         ...c,
@@ -164,23 +229,28 @@ export async function getCustomers(sessionKey) {
 // -----------------------------------------------
 // ดึงรายการสินค้า
 // -----------------------------------------------
-export async function getProducts(sessionKey) {
-    const baseUrl = await getBaseUrl();
+export async function getProducts(sessionKey, hostUrl) {
+    const baseUrl = await getBaseUrl(hostUrl);
+    const url = `${baseUrl}/InventoryBasic/GetBasicProductsList?SESSION_ID=${sessionKey}`;
+    
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { 
+            "Content-Type": "application/json", 
+            "Accept": "application/json",
+            "Cookie": lastUsedCookie,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        },
+        body: JSON.stringify({ 
+            COM_CODE: String(process.env.ECOUNT_COMPANY_CODE || "917158")
+        }),
+    });
 
-    const response = await fetch(
-        `${baseUrl}/InventoryBasic/GetBasicProductsList?SESSION_ID=${sessionKey}`,
-        {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                COM_CODE: process.env.ECOUNT_COMPANY_CODE
-            }),
-        }
-    );
-
-    const data = await response.json();
-    console.log("ECOUNT GetBasicProductsList Status:", data.Status);
-    // สินค้าจะอยู่ใน data.Data.Result เป็น Array
+    const data = await response.json().catch(() => null);
+    if (!data || (data.Status !== "200" && data.Status !== 200)) {
+        console.error("Ecount GetBasicProductsList failed", data);
+        return [];
+    }
     return data.Data?.Result || [];
 }
 
@@ -207,7 +277,11 @@ export async function createSalesOrder(sessionKey, soData) {
         `${baseUrl}/SaleOrder/SaveSaleOrder?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "Cookie": lastUsedCookie,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            },
             body: JSON.stringify({
                 SaleOrderList: saleOrderList
             }),
@@ -242,7 +316,11 @@ export async function getSalesReport(sessionKey, startDate, endDate) {
         `${baseUrl}/Sale/GetSaleListPost?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "Cookie": lastUsedCookie,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            },
             body: JSON.stringify({
                 COM_CODE: process.env.ECOUNT_COMPANY_CODE,
                 START_DATE: startDate, // เช่น "20240401"
@@ -258,25 +336,30 @@ export async function getSalesReport(sessionKey, startDate, endDate) {
 // -----------------------------------------------
 // ข้อมูลสินค้าคงคลัง (Inventory Balance)
 // -----------------------------------------------
-export async function getInventoryBalance(sessionKey, baseDate, warehouseCode) {
-    const baseUrl = await getBaseUrl();
+export async function getInventoryBalance(sessionKey, hostUrl, baseDate, warehouseCode) {
+    const baseUrl = await getBaseUrl(hostUrl);
+    const url = `${baseUrl}/InventoryBalance/GetListInventoryBalanceStatus?SESSION_ID=${sessionKey}`;
     
-    // Ecount V2 GetListInventoryBalanceStatus
-    const response = await fetch(
-        `${baseUrl}/InventoryBalance/GetListInventoryBalanceStatus?SESSION_ID=${sessionKey}`,
-        {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                COM_CODE: process.env.ECOUNT_COMPANY_CODE,
-                BASE_DATE: baseDate || new Date().toISOString().split('T')[0].replace(/-/g, ''),
-                WH_CD: warehouseCode || process.env.ECOUNT_WH_CD || "ST002",
-                IsPaging: false
-            }),
-        }
-    );
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { 
+            "Content-Type": "application/json",
+            "Cookie": lastUsedCookie,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        },
+        body: JSON.stringify({
+            COM_CODE: String(process.env.ECOUNT_COMPANY_CODE || "917158"),
+            BASE_DATE: String(baseDate || new Date().toISOString().split('T')[0].replace(/-/g, '')),
+            WH_CD: warehouseCode || "",
+            IsPaging: false
+        }),
+    });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => null);
+    if (!data || (data.Status !== "200" && data.Status !== 200)) {
+        console.error("Ecount GetListInventoryBalanceStatus failed", data);
+        return [];
+    }
     return data.Data?.Result || [];
 }
 
@@ -284,8 +367,8 @@ export async function getInventoryBalance(sessionKey, baseDate, warehouseCode) {
 // สร้างใบจ่ายสินค้า (Goods Issue)
 // issueData = { date, warehouseCode, toLocation, remarks, items: [{ productCode, quantity }] }
 // -----------------------------------------------
-export async function createGoodsIssue(sessionKey, issueData) {
-    const baseUrl = await getBaseUrl();
+export async function createGoodsIssue(sessionKey, hostUrl, issueData) {
+    const baseUrl = await getBaseUrl(hostUrl);
     
     const goodsIssueList = issueData.items.map(item => ({
         BulkDatas: {
@@ -308,7 +391,11 @@ export async function createGoodsIssue(sessionKey, issueData) {
         `${baseUrl}/Inventory/SaveGoodsIssue?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "Cookie": lastUsedCookie,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            },
             body: JSON.stringify({
                 GoodsIssueList: goodsIssueList
             }),
@@ -337,8 +424,8 @@ export async function createGoodsIssue(sessionKey, issueData) {
 // สร้างใบรับสินค้า (Goods Receipt I)
 // receiptData = { date, inWarehouseCode, custCode, empCode, pjtCode, remarks, items: [{ productCode, quantity, price, remarks }] }
 // -----------------------------------------------
-export async function createGoodsReceipt(sessionKey, receiptData) {
-    const baseUrl = await getBaseUrl();
+export async function createGoodsReceipt(sessionKey, hostUrl, receiptData) {
+    const baseUrl = await getBaseUrl(hostUrl);
     
     const goodsReceiptList = receiptData.items.map(item => ({
         BulkDatas: {
@@ -360,7 +447,11 @@ export async function createGoodsReceipt(sessionKey, receiptData) {
         `${baseUrl}/Inventory/SaveGoodsReceipt?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "Cookie": lastUsedCookie,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            },
             body: JSON.stringify({
                 GoodsReceiptList: goodsReceiptList
             }),
@@ -389,8 +480,8 @@ export async function createGoodsReceipt(sessionKey, receiptData) {
 // สร้างใบกำกับสินค้า II (ลงบัญชีอัตโนมัติ)
 // invoiceData = { date, customerCode, totalAmt, vatAmt, remarks }
 // -----------------------------------------------
-export async function createInvoiceAuto(sessionKey, invoiceData) {
-    const baseUrl = await getBaseUrl();
+export async function createInvoiceAuto(sessionKey, hostUrl, invoiceData) {
+    const baseUrl = await getBaseUrl(hostUrl);
     
     const invoiceAutoList = [
         {
@@ -410,7 +501,11 @@ export async function createInvoiceAuto(sessionKey, invoiceData) {
         `${baseUrl}/InvoiceAuto/SaveInvoiceAuto?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "Cookie": lastUsedCookie,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            },
             body: JSON.stringify({
                 InvoiceAutoList: invoiceAutoList
             }),

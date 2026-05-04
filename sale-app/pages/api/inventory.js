@@ -36,9 +36,8 @@ export default async function handler(req, res) {
             "7": "อื่นๆ"
         };
 
-        // Merge & Filter: We only want Finished Goods (FG) as requested
+        // Merge Mapping: Support all types of products
         const inventoryListing = (products || [])
-            .filter(p => p.PROD_TYPE === "1") // "1" is FG mapping in Ecount
             .map(p => {
                 return {
                     PROD_CD: p.PROD_CD,
@@ -51,6 +50,9 @@ export default async function handler(req, res) {
         res.status(200).json({ inventory: inventoryListing });
     } catch (error) {
         console.error("API Error Inventory:", error);
-        res.status(500).json({ error: "Cannot fetch inventory balance" });
+        res.status(500).json({ 
+            error: "Cannot fetch inventory balance", 
+            details: error.message || error 
+        });
     }
 }

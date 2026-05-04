@@ -199,6 +199,20 @@ export default function Inventory() {
                                         <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
                                     ))}
                                 </optgroup>
+                                {WAREHOUSES.filter(w => w.type === 'Factory').length > 0 && (
+                                    <optgroup label="โรงงาน">
+                                        {WAREHOUSES.filter(w => w.type === 'Factory').map(w => (
+                                            <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                        ))}
+                                    </optgroup>
+                                )}
+                                {WAREHOUSES.filter(w => w.type === 'Other').length > 0 && (
+                                    <optgroup label="อื่นๆ">
+                                        {WAREHOUSES.filter(w => w.type === 'Other').map(w => (
+                                            <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                        ))}
+                                    </optgroup>
+                                )}
                             </select>
                         </div>
                         <div className="flex items-center space-x-2 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm hidden md:flex">

@@ -164,6 +164,25 @@ export default function TransferStock() {
                                                     <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
                                                 ))}
                                             </optgroup>
+                                            <optgroup label="คลังรถเซลส์ (Van)">
+                                                {WAREHOUSES.filter(w => w.type === 'Van').map(w => (
+                                                    <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                                ))}
+                                            </optgroup>
+                                            {WAREHOUSES.filter(w => w.type === 'Factory').length > 0 && (
+                                                <optgroup label="โรงงาน">
+                                                    {WAREHOUSES.filter(w => w.type === 'Factory').map(w => (
+                                                        <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                                    ))}
+                                                </optgroup>
+                                            )}
+                                            {WAREHOUSES.filter(w => w.type === 'Other').length > 0 && (
+                                                <optgroup label="อื่นๆ">
+                                                    {WAREHOUSES.filter(w => w.type === 'Other').map(w => (
+                                                        <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                                    ))}
+                                                </optgroup>
+                                            )}
                                         </select>
                                     </div>
                                     <div className="flex justify-center my-1 text-blue-400">
@@ -179,11 +198,30 @@ export default function TransferStock() {
                                             className="w-full px-3 py-2 border-2 border-blue-200 rounded-lg outline-none text-sm font-bold text-blue-900 focus:border-blue-500 bg-white"
                                         >
                                             <option value="">-- ระบุคลังรถเซลส์ --</option>
+                                            <optgroup label="คลังหลัก">
+                                                {WAREHOUSES.filter(w => w.type === 'Main').map(w => (
+                                                    <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                                ))}
+                                            </optgroup>
                                             <optgroup label="คลังรถเซลส์ (Van)">
                                                 {WAREHOUSES.filter(w => w.type === 'Van').map(w => (
                                                     <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
                                                 ))}
                                             </optgroup>
+                                            {WAREHOUSES.filter(w => w.type === 'Factory').length > 0 && (
+                                                <optgroup label="โรงงาน">
+                                                    {WAREHOUSES.filter(w => w.type === 'Factory').map(w => (
+                                                        <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                                    ))}
+                                                </optgroup>
+                                            )}
+                                            {WAREHOUSES.filter(w => w.type === 'Other').length > 0 && (
+                                                <optgroup label="อื่นๆ">
+                                                    {WAREHOUSES.filter(w => w.type === 'Other').map(w => (
+                                                        <option key={w.code} value={w.code}>{w.code} - {w.name}</option>
+                                                    ))}
+                                                </optgroup>
+                                            )}
                                         </select>
                                     </div>
                                 </div>
