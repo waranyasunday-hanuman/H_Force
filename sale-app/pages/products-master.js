@@ -1,28 +1,61 @@
 import { useState, useEffect, useMemo } from "react";
 import Layout from "../components/Layout";
 import Loading from "../components/Loading";
+import { supabase } from "../lib/supabase";
 
 export default function ProductsMaster() {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [syncing, setSyncing] = useState(false);
+    const [dataSource, setDataSource] = useState("");
     const [searchTerm, setSearchTerm] = useState("");
     const [filterType, setFilterType] = useState("ทั้งหมด");
+    const [role, setRole] = useState(null);
+
+    const fetchProducts = async () => {
+        setLoading(true);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                const { data: profile } = await supabase.from("profiles").select("role").eq("id", session.user.id).single();
+                setRole(profile?.role || "sale");
+            }
+
+            const res = await fetch("/api/products");
+            const data = await res.json();
+            if (res.ok) {
+                setProducts(data.products || []);
+                setDataSource(data.source || "unknown");
+            }
+        } catch (err) {
+            console.error("Failed to load products", err);
+        }
+        setLoading(false);
+    };
 
     useEffect(() => {
-        const fetchProducts = async () => {
-            try {
-                const res = await fetch("/api/products");
-                const data = await res.json();
-                if (res.ok) {
-                    setProducts(data.products || []);
-                }
-            } catch (err) {
-                console.error("Failed to load products", err);
-            }
-            setLoading(false);
-        };
         fetchProducts();
     }, []);
+
+    const handleSync = async () => {
+        if (!confirm("คุณต้องการดึงข้อมูลสินค้าทั้งหมดจาก Ecount มาอัปเดตในฐานข้อมูลหรือไม่? (อาจใช้เวลาสักครู่)")) return;
+        
+        setSyncing(true);
+        try {
+            const res = await fetch("/api/sync-products", { method: "POST" });
+            const data = await res.json();
+            
+            if (res.ok) {
+                alert(`ซิงค์ข้อมูลสำเร็จ! อัปเดต ${data.count || 0} รายการ`);
+                fetchProducts(); // Refresh the list
+            } else {
+                alert(`เกิดข้อผิดพลาด: ${data.error}`);
+            }
+        } catch (error) {
+            alert(`เกิดข้อผิดพลาดในการเชื่อมต่อ: ${error.message}`);
+        }
+        setSyncing(false);
+    };
 
     // Extract Unique Types dynamically
     const uniqueTypes = useMemo(() => {
@@ -41,6 +74,11 @@ export default function ProductsMaster() {
 
     const displayProducts = useMemo(() => {
         let current = products;
+        
+        // --- Role Based Filter ---
+        if (role === "sale") {
+            current = current.filter(p => String(p.PROD_TYPE) === "1");
+        }
         
         const typeMapping = {
             "1": "สินค้าสำเร็จรูป (FG)",
@@ -102,15 +140,22 @@ export default function ProductsMaster() {
             <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 pb-4 border-b border-gray-200">
                 <div>
                     <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-1">ทะเบียนสินค้า (Product Master) 📦</h1>
-                    <p className="text-gray-500 font-medium">ดูรายละเอียดข้อมูลสินค้าและวัตถุดิบ ดึงตรงจาก Ecount ERP</p>
+                    <p className="text-gray-500 font-medium">
+                        {role === "sale" 
+                            ? "ดูรายละเอียดข้อมูลสินค้าสำเร็จรูป (FG) สำหรับการเสนอขาย" 
+                            : "ดูรายละเอียดข้อมูลสินค้าและวัตถุดิบ ดึงตรงจาก Ecount ERP"}
+                    </p>
                 </div>
                 <div className="mt-4 md:mt-0 flex items-center space-x-4">
-                    <button 
-                        onClick={() => window.location.reload()}
-                        className="flex items-center space-x-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm"
-                    >
-                        <span>รีเฟรชข้อมูล</span>
-                    </button>
+                    {role !== "sale" && (
+                        <button 
+                            onClick={handleSync}
+                            disabled={syncing}
+                            className={`flex items-center space-x-2 border border-gray-200 px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm ${syncing ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white hover:bg-green-50 text-green-700 hover:border-green-300'}`}
+                        >
+                            <span>{syncing ? "กำลังซิงค์..." : "🔄 ซิงค์ข้อมูลกับ Ecount"}</span>
+                        </button>
+                    )}
                     <a 
                         href="/inventory"
                         className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-md"
@@ -136,18 +181,20 @@ export default function ProductsMaster() {
                         />
                     </div>
                     
-                    <div className="flex items-center space-x-2 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm">
-                        <span className="text-xs font-semibold text-gray-500">ประเภท:</span>
-                        <select 
-                            value={filterType} 
-                            onChange={(e) => setFilterType(e.target.value)}
-                            className="text-sm border-none bg-transparent font-medium text-gray-800 outline-none cursor-pointer"
-                        >
-                            {uniqueTypes.map(t => (
-                                <option key={t} value={t}>{t}</option>
-                            ))}
-                        </select>
-                    </div>
+                    {role !== "sale" && (
+                        <div className="flex items-center space-x-2 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm">
+                            <span className="text-xs font-semibold text-gray-500">ประเภท:</span>
+                            <select 
+                                value={filterType} 
+                                onChange={(e) => setFilterType(e.target.value)}
+                                className="text-sm border-none bg-transparent font-medium text-gray-800 outline-none cursor-pointer"
+                            >
+                                {uniqueTypes.map(t => (
+                                    <option key={t} value={t}>{t}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                 </div>
 
                 {loading ? (
@@ -221,13 +268,26 @@ export default function ProductsMaster() {
                 )}
                 
                 {!loading && (
-                    <div className="p-4 bg-gray-50 border-t border-gray-100 text-xs text-center text-gray-500 flex justify-between items-center">
-                        <div>
+                    <div className="p-4 bg-gray-50 border-t border-gray-100 text-xs text-center flex justify-between items-center">
+                        <div className="text-gray-500">
                             <span>แสดงผล </span>
                             <span className="font-semibold text-gray-700 mx-1">{displayProducts.length}</span>
                             <span> จากทั้งหมด </span>
                             <span className="font-semibold text-gray-700 mx-1">{products.length}</span>
                             <span> รายการ</span>
+                        </div>
+                        <div>
+                            {dataSource === 'supabase' ? (
+                                <span className="text-green-600 font-semibold flex items-center gap-1">
+                                    <span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span> 
+                                    ดึงข้อมูลจาก Local Database (รวดเร็ว)
+                                </span>
+                            ) : dataSource === 'ecount' ? (
+                                <span className="text-orange-600 font-semibold flex items-center gap-1">
+                                    <span className="w-2 h-2 rounded-full bg-orange-500 inline-block"></span> 
+                                    ดึงข้อมูลจาก Ecount โดยตรง (ช้ากว่า)
+                                </span>
+                            ) : null}
                         </div>
                     </div>
                 )}

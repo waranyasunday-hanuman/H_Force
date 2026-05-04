@@ -44,6 +44,7 @@ export default async function handler(req, res) {
                 display_name: profileMap[u.id]?.display_name || "",
                 pic_code: profileMap[u.id]?.pic_code || "",
                 pic_name: profileMap[u.id]?.pic_name || "",
+                warehouse_code: profileMap[u.id]?.warehouse_code || "",
                 is_active: profileMap[u.id]?.is_active ?? true,
             }));
 
@@ -54,14 +55,23 @@ export default async function handler(req, res) {
         }
     }
 
-    // PATCH: อัพเดต profile ของ user (role, pic_code, pic_name, display_name, is_active)
+    // PATCH: อัพเดต profile ของ user (role, pic_code, pic_name, display_name, is_active, warehouse_code)
+    // หรือ Reset Password
     if (req.method === "PATCH") {
-        const { id, role, display_name, pic_code, pic_name, is_active } = req.body;
+        const { id, role, display_name, pic_code, pic_name, is_active, warehouse_code, password } = req.body;
 
         if (!id) return res.status(400).json({ error: "Missing user id" });
 
         try {
-            // Upsert profile
+            // 1. ถ้ามีการส่ง password มา ให้ทำการ reset password
+            if (password) {
+                const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, {
+                    password: password
+                });
+                if (authError) throw authError;
+            }
+
+            // 2. Upsert profile
             const { error: upsertError } = await supabaseAdmin
                 .from("profiles")
                 .upsert({
@@ -70,6 +80,7 @@ export default async function handler(req, res) {
                     display_name,
                     pic_code,
                     pic_name,
+                    warehouse_code,
                     is_active,
                     updated_at: new Date().toISOString(),
                 });

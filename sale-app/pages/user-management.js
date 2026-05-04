@@ -4,6 +4,7 @@ import Layout from "../components/Layout";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import Swal from "sweetalert2";
+import { WAREHOUSES, getLocationName } from "../lib/locations";
 
 const ROLES = ["manager", "sale"];
 
@@ -31,7 +32,15 @@ function StatusBadge({ active }) {
 
 // Modal: Invite User
 function InviteModal({ onClose, onSuccess, existingPics }) {
-    const [form, setForm] = useState({ email: "", role: "sale", display_name: "", pic_code: "", pic_name: "" });
+    const [form, setForm] = useState({ 
+        email: "", 
+        password: "", 
+        role: "sale", 
+        display_name: "", 
+        pic_code: "", 
+        pic_name: "", 
+        warehouse_code: "" 
+    });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -41,7 +50,7 @@ function InviteModal({ onClose, onSuccess, existingPics }) {
         setLoading(true);
         setError("");
         try {
-            const res = await fetch("/api/users/invite", {
+            const res = await fetch("/api/users/create", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(form),
@@ -50,8 +59,8 @@ function InviteModal({ onClose, onSuccess, existingPics }) {
             if (!res.ok) throw new Error(data.error || "เกิดข้อผิดพลาด");
             await Swal.fire({
                 icon: "success",
-                title: "ส่ง Invitation แล้ว! 🎉",
-                html: `ส่ง Email เชิญไปยัง <b>${form.email}</b> แล้ว<br/>ผู้ใช้ต้องกด Link ใน Email เพื่อตั้ง Password`,
+                title: "สร้างผู้ใช้สำเร็จ! 🎉",
+                html: `สร้างบัญชีสำหรับ <b>${form.email}</b> เรียบร้อยแล้ว<br/>ผู้ใช้สามารถ Login ด้วย Password ที่กำหนดได้ทันที`,
                 confirmButtonColor: "#2563eb",
             });
             onSuccess();
@@ -63,8 +72,8 @@ function InviteModal({ onClose, onSuccess, existingPics }) {
     };
 
     // เมื่อเลือก PIC จาก dropdown ที่มีอยู่แล้ว
-    const handlePickPic = (user) => {
-        setForm({ ...form, pic_code: user.pic_code, pic_name: user.pic_name || user.display_name });
+    const handlePickPic = (p) => {
+        setForm({ ...form, pic_code: p.pic_code, pic_name: p.pic_name });
     };
 
     return (
@@ -72,24 +81,41 @@ function InviteModal({ onClose, onSuccess, existingPics }) {
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
                 {/* Header */}
                 <div className="bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-5">
-                    <h2 className="text-xl font-bold text-white">✉️ เชิญผู้ใช้ใหม่</h2>
-                    <p className="text-emerald-100 text-sm mt-1">ระบบจะส่ง Email เชิญให้ผู้ใช้ตั้ง Password เอง</p>
+                    <h2 className="text-xl font-bold text-white">👤 เพิ่มผู้ใช้ใหม่</h2>
+                    <p className="text-emerald-100 text-sm mt-1">สร้างบัญชีผู้ใช้งานและกำหนดรหัสผ่านโดยตรง</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-5">
-                    {/* Email */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                            Email <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="email"
-                            value={form.email}
-                            onChange={(e) => setForm({ ...form, email: e.target.value })}
-                            placeholder="name@company.com"
-                            required
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all text-sm"
-                        />
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* Email */}
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                                Email <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                                type="email"
+                                value={form.email}
+                                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                                placeholder="name@company.com"
+                                required
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all text-sm"
+                            />
+                        </div>
+
+                        {/* Password */}
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                                Password <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                value={form.password}
+                                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                                placeholder="กำหนดรหัสผ่าน"
+                                required
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all text-sm"
+                            />
+                        </div>
                     </div>
 
                     {/* Display Name */}
@@ -127,6 +153,32 @@ function InviteModal({ onClose, onSuccess, existingPics }) {
                         </div>
                     </div>
 
+                    {/* Warehouse Code (Show only for SALE) */}
+                    {form.role === "sale" && (
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1.5 text-blue-600">
+                                🏠 รหัสคลังสินค้า (สำหรับ Sale)
+                            </label>
+                            <select
+                                value={form.warehouse_code}
+                                onChange={(e) => setForm({ ...form, warehouse_code: e.target.value })}
+                                className="w-full px-4 py-3 rounded-xl border border-blue-100 bg-blue-50/30 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm font-bold"
+                            >
+                                <option value="">— เลือกคลังสินค้าที่ Sale รับผิดชอบ —</option>
+                                {["Main", "Van", "Factory"].map(type => (
+                                    <optgroup key={type} label={type === "Van" ? "คลังรถเซลส์ (Van)" : type === "Main" ? "คลังหลัก" : "โรงงาน"}>
+                                        {WAREHOUSES.filter(w => w.type === type).map(w => (
+                                            <option key={w.code} value={w.code}>
+                                                [{w.code}] {w.name}
+                                            </option>
+                                        ))}
+                                    </optgroup>
+                                ))}
+                            </select>
+                            <p className="text-[10px] text-gray-400 mt-1">ใช้สำหรับผูกคลังเพื่อให้ Sale เห็นสต็อกคลังนี้เป็นหลัก</p>
+                        </div>
+                    )}
+
                     {/* PIC Section */}
                     <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 rounded-2xl p-4 space-y-3">
                         <div className="flex items-center gap-2 mb-1">
@@ -134,10 +186,10 @@ function InviteModal({ onClose, onSuccess, existingPics }) {
                             <span className="text-sm font-bold text-indigo-800">เชื่อม PIC (Person In Charge)</span>
                         </div>
 
-                        {/* เลือกจาก existing PIC */}
+                        {/* เลือกจาก Master PIC table */}
                         {existingPics.length > 0 && (
                             <div>
-                                <label className="block text-xs font-semibold text-gray-600 mb-1">เลือกจาก PIC ที่มีอยู่แล้ว</label>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">เลือกจากรายชื่อ PIC ในระบบ</label>
                                 <select
                                     onChange={(e) => {
                                         const selected = existingPics.find(p => p.pic_code === e.target.value);
@@ -146,10 +198,10 @@ function InviteModal({ onClose, onSuccess, existingPics }) {
                                     className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-indigo-400 outline-none text-sm bg-white"
                                     defaultValue=""
                                 >
-                                    <option value="">— หรือเลือก PIC สำเร็จรูป —</option>
+                                    <option value="">— เลือก PIC จาก Ecount —</option>
                                     {existingPics.map((p) => (
                                         <option key={p.pic_code} value={p.pic_code}>
-                                            [{p.pic_code}] {p.pic_name || p.display_name}
+                                            [{p.pic_code}] {p.pic_name} {p.keyword ? `(${p.keyword})` : ''}
                                         </option>
                                     ))}
                                 </select>
@@ -205,9 +257,9 @@ function InviteModal({ onClose, onSuccess, existingPics }) {
                             {loading ? (
                                 <>
                                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                    กำลังส่ง...
+                                    <span>สร้างผู้ใช้ใหม่</span>
                                 </>
-                            ) : "✉️ ส่ง Invitation"}
+                            ) : "👤 สร้างผู้ใช้ทันที"}
                         </button>
                     </div>
                 </form>
@@ -220,6 +272,7 @@ export default function UserManagementPage() {
     const router = useRouter();
     const [currentRole, setCurrentRole] = useState(null);
     const [users, setUsers] = useState([]);
+    const [pics, setPics] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(null);
     const [error, setError] = useState("");
@@ -260,9 +313,20 @@ export default function UserManagementPage() {
         }
     }, []);
 
+    const fetchPics = useCallback(async () => {
+        try {
+            const res = await fetch("/api/pics");
+            const data = await res.json();
+            if (res.ok) setPics(data.pics || []);
+        } catch (err) { console.error("Fetch pics error:", err); }
+    }, []);
+
     useEffect(() => {
-        if (currentRole === "admin" || currentRole === "manager") fetchUsers();
-    }, [currentRole, fetchUsers]);
+        if (currentRole === "admin" || currentRole === "manager") {
+            fetchUsers();
+            fetchPics();
+        }
+    }, [currentRole, fetchUsers, fetchPics]);
 
     const filtered = users.filter((u) => {
         const matchSearch =
@@ -439,7 +503,7 @@ export default function UserManagementPage() {
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">#</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">ผู้ใช้</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Role</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">PIC (Person In Charge)</th>
+                                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Warehouse / PIC</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">สถานะ</th>
                                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">เข้าสู่ระบบล่าสุด</th>
                                         <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">จัดการ</th>
@@ -472,26 +536,34 @@ export default function UserManagementPage() {
                                                 </span>
                                             </td>
 
-                                            {/* PIC */}
+                                            {/* Warehouse & PIC */}
                                             <td className="px-6 py-4">
-                                                {user.pic_code ? (
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center flex-shrink-0">
-                                                            <span className="text-xs font-bold">{user.pic_code.slice(0, 2)}</span>
+                                                <div className="space-y-2">
+                                                    {user.warehouse_code && (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-600 border border-blue-200">
+                                                                คลัง: {getLocationName(user.warehouse_code)}
+                                                            </span>
                                                         </div>
-                                                        <div>
-                                                            <div className="text-sm font-semibold text-gray-800">{user.pic_name || user.display_name}</div>
-                                                            <div className="text-xs text-indigo-500 font-mono">{user.pic_code}</div>
+                                                    )}
+                                                    {user.pic_code ? (
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center flex-shrink-0">
+                                                                <span className="text-[10px] font-bold">{user.pic_code}</span>
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-xs font-semibold text-gray-800">{user.pic_name || user.display_name}</div>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => setEditModal({ ...user })}
-                                                        className="text-xs text-indigo-500 hover:text-indigo-700 font-semibold flex items-center gap-1 hover:underline"
-                                                    >
-                                                        <span>🔗</span> กำหนด PIC
-                                                    </button>
-                                                )}
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => setEditModal({ ...user })}
+                                                            className="text-[10px] text-indigo-500 hover:text-indigo-700 font-semibold flex items-center gap-1 hover:underline"
+                                                        >
+                                                            <span>🔗</span> กำหนด PIC
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
 
                                             {/* Status */}
@@ -549,7 +621,7 @@ export default function UserManagementPage() {
             {/* Invite Modal */}
             {showInvite && (
                 <InviteModal
-                    existingPics={existingPics}
+                    existingPics={pics}
                     onClose={() => setShowInvite(false)}
                     onSuccess={() => { setShowInvite(false); fetchUsers(); }}
                 />
@@ -600,9 +672,59 @@ export default function UserManagementPage() {
                                     ))}
                                 </div>
                                 <p className="text-xs text-gray-400 mt-2">
-                                    {editModal.role === "manager" && "🏆 Manager: เข้าถึงได้ทุกหน้า รวมถึงจัดการ User และ Dashboard"}
-                                    {editModal.role === "sale" && "🧑‍💼 Sale: สร้างออเดอร์ เช็คอิน และดูสินค้า"}
                                 </p>
+                            </div>
+
+                            {/* Warehouse Code */}
+                            {editModal.role === "sale" && (
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">🏠 รหัสคลังสินค้า (สำหรับ Sale)</label>
+                                    <select
+                                        value={editModal.warehouse_code || ""}
+                                        onChange={(e) => setEditModal({ ...editModal, warehouse_code: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-blue-50/30 focus:border-blue-400 outline-none text-sm font-bold"
+                                    >
+                                        <option value="">— เลือกคลังสินค้าที่ Sale รับผิดชอบ —</option>
+                                        {["Main", "Van", "Factory"].map(type => (
+                                            <optgroup key={type} label={type === "Van" ? "คลังรถเซลส์ (Van)" : type === "Main" ? "คลังหลัก" : "โรงงาน"}>
+                                                {WAREHOUSES.filter(w => w.type === type).map(w => (
+                                                    <option key={w.code} value={w.code}>
+                                                        [{w.code}] {w.name}
+                                                    </option>
+                                                ))}
+                                            </optgroup>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {/* Reset Password */}
+                            <div className="bg-red-50 border border-red-100 rounded-2xl p-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <span className="text-sm font-bold text-red-800">🔑 รีเซ็ตรหัสผ่าน</span>
+                                        <p className="text-[10px] text-red-600 mt-0.5">ระบุรหัสผ่านใหม่หากต้องการเปลี่ยน</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            const { value: newPass } = await Swal.fire({
+                                                title: 'ระบุรหัสผ่านใหม่',
+                                                input: 'text',
+                                                inputLabel: 'Password',
+                                                inputPlaceholder: 'รหัสผ่านใหม่...',
+                                                showCancelButton: true,
+                                            });
+                                            if (newPass) {
+                                                setEditModal({ ...editModal, password: newPass });
+                                                Swal.fire('เตรียมพร้อม!', 'รหัสผ่านจะถูกเปลี่ยนเมื่อคุณกดบันทึก', 'info');
+                                            }
+                                        }}
+                                        className="px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-all"
+                                    >
+                                        {editModal.password ? "✅ ตั้งค่าแล้ว" : "🔄 เปลี่ยนรหัสผ่าน"}
+                                    </button>
+                                </div>
                             </div>
 
                             {/* PIC */}
@@ -612,20 +734,20 @@ export default function UserManagementPage() {
                                     <span className="text-sm font-bold text-indigo-800">PIC (Person In Charge)</span>
                                 </div>
 
-                                {/* เลือกจาก existing user */}
-                                {existingPics.filter(p => p.id !== editModal.id).length > 0 && (
+                                {/* เลือกจาก Master PIC table */}
+                                {pics.length > 0 && (
                                     <select
                                         onChange={(e) => {
-                                            const sel = existingPics.find(p => p.pic_code === e.target.value);
-                                            if (sel) setEditModal({ ...editModal, pic_code: sel.pic_code, pic_name: sel.pic_name || sel.display_name });
+                                            const sel = pics.find(p => p.pic_code === e.target.value);
+                                            if (sel) setEditModal({ ...editModal, pic_code: sel.pic_code, pic_name: sel.pic_name });
                                         }}
                                         className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-indigo-400 outline-none text-sm bg-white"
                                         defaultValue=""
                                     >
-                                        <option value="">— คัดลอกจาก PIC ที่มีอยู่แล้ว —</option>
-                                        {existingPics.filter(p => p.id !== editModal.id).map((p) => (
+                                        <option value="">— เลือกจากรายชื่อ PIC ในระบบ —</option>
+                                        {pics.map((p) => (
                                             <option key={p.pic_code} value={p.pic_code}>
-                                                [{p.pic_code}] {p.pic_name || p.display_name}
+                                                [{p.pic_code}] {p.pic_name} {p.keyword ? `(${p.keyword})` : ''}
                                             </option>
                                         ))}
                                     </select>

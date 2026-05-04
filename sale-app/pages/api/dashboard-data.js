@@ -60,8 +60,8 @@ export default async function handler(req, res) {
 
 
         // --- Process Products ---
-        const sessionKey = await getSessionKey();
-        const products = await getProducts(sessionKey).catch(() => []);
+        const auth = await getSessionKey();
+        const products = await getProducts(auth.sessionKey, auth.hostUrl).catch(() => []);
         const productMap = {};
         products.forEach(p => {
             productMap[p.PROD_CD] = p.PROD_DES;
@@ -163,6 +163,14 @@ export default async function handler(req, res) {
             .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
             .slice(0, 15);
 
+        // --- Fetch All Staff for Manager Dropdown ---
+        const { data: profiles } = await supabase
+            .from('profiles')
+            .select('email, full_name, role')
+            .in('role', ['sale', 'manager']);
+
+        const allStaff = profiles || [];
+
         // --- Return Data ---
         res.status(200).json({ 
             totalAmount,
@@ -170,6 +178,7 @@ export default async function handler(req, res) {
             newCustomersCount,
             bestSellingProducts,
             salesByPerson,
+            allStaff,
             rawCount: rawItemsCount,
             checkInCount,
             visitNew,

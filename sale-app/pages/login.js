@@ -68,13 +68,11 @@ export default function LoginPage() {
                 <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/50">
                     
                     <div className="text-center mb-8">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-lg mb-4">
-                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
+                        <div className="inline-flex items-center justify-center mb-4">
+                            <img src="/logo.jpg" alt="Hanuman Logo" className="w-32 h-32 object-contain rounded-full shadow-2xl" />
                         </div>
-                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">H Force</h1>
-                        <p className="text-gray-500 mt-2 text-sm">ยินดีต้อนรับเข้าสู่ระบบจัดการรายการขาย</p>
+                        <h1 className="text-4xl font-black text-indigo-800 tracking-tighter">H Force</h1>
+                        <p className="text-slate-500 mt-2 text-sm font-medium">ยินดีต้อนรับเข้าสู่ระบบจัดการรายการขาย</p>
                     </div>
 
                     <form onSubmit={handleLogin} className="space-y-5">

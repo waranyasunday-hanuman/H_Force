@@ -12,9 +12,9 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: "ไม่มีรายการสินค้า" });
         }
 
-        const sessionKey = await getSessionKey();
+        const { sessionKey, hostUrl } = await getSessionKey();
 
-        const result = await createGoodsIssue(sessionKey, {
+        const result = await createGoodsIssue(sessionKey, hostUrl, {
             date: date || new Date().toISOString().split('T')[0].replace(/-/g, ''),
             warehouseCode,
             inWarehouseCode,

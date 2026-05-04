@@ -72,8 +72,18 @@ export default function PrintSO() {
     
     const needTax = order.need_tax_invoice || metadata.needTaxInvoice || false;
     const sigUrl = order.customer_signature_url || order.signatureUrl || metadata.signatureUrl;
-    const dueDate = order.due_date || fallbackMeta.due_date || "";
+    const dueDateRaw = order.due_date || fallbackMeta.due_date || "";
     const soNumber = order.so_number || fallbackMeta.so_number || order.id || '—';
+
+    const formatDateThai = (dStr) => {
+        if (!dStr) return "—";
+        const d = new Date(dStr);
+        if (isNaN(d.getTime())) return dStr;
+        return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear() + 543}`;
+    };
+
+    const dueDate = formatDateThai(dueDateRaw);
+    const delDate = formatDateThai(metadata.deliveryDate);
     
     const now = new Date();
     const printDate = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear() + 543}`;
@@ -222,11 +232,46 @@ export default function PrintSO() {
                             </span></div>
                             {metadata.managerRemarks && <div style={{ marginTop: '6px', fontSize: '12px', color: '#b45309', background: '#fffbeb', padding: '4px 8px', borderRadius: '4px', borderLeft: '2px solid #f59e0b' }}>💬 อนุมัติ: {metadata.managerRemarks}</div>}
                         </div>
-                        {dueDate && (
+                        {dueDateRaw && (
                             <div className="field"><label>วันกำหนดชำระ / Due Date</label><span>{dueDate}</span></div>
                         )}
                     </div>
                 </div>
+
+                {/* Delivery Info */}
+                {(metadata.deliveryMethod === 'office_delivery' || metadata.deliveryMethod === 'stock_on_hand') && (
+                    <div className="section" style={{ background: '#f8fafc' }}>
+                        <div className="section-title" style={{ color: metadata.deliveryMethod === 'office_delivery' ? '#2563eb' : '#059669' }}>ข้อมูลการจัดส่ง</div>
+                        <div className="row2">
+                            <div className="field">
+                                <label>รูปแบบการส่ง</label>
+                                <span style={{ color: metadata.deliveryMethod === 'office_delivery' ? '#2563eb' : '#059669' }}>
+                                    {metadata.deliveryMethod === 'office_delivery' ? '🏢 สำนักงานจัดส่ง' : '📦 ตัดสต็อกพนักงาน (Sale Stock)'}
+                                </span>
+                            </div>
+                            {metadata.deliveryMethod === 'office_delivery' && (
+                                <div className="field">
+                                    <label>วันที่ให้จัดส่ง</label>
+                                    <span>{delDate}</span>
+                                </div>
+                            )}
+                        </div>
+                        {metadata.deliveryMethod === 'office_delivery' && (
+                            <div style={{ marginTop: '12px' }} className="grid grid-cols-1 gap-3">
+                                <div className="field">
+                                    <label>ที่อยู่จัดส่ง</label>
+                                    <span style={{ fontWeight: 400 }}>{metadata.deliveryAddress || "—"}</span>
+                                </div>
+                                {metadata.deliveryRemarks && (
+                                    <div className="field">
+                                        <label>หมายเหตุการจัดส่ง</label>
+                                        <span style={{ fontWeight: 400, color: '#4b5563' }}>{metadata.deliveryRemarks}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 <div className="flex-1"></div>
 

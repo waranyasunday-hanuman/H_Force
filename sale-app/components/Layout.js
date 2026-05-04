@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
+import { getLocationName } from "../lib/locations";
 
 const HIDE_PATHS = ["/login", "/set-password"];
 
@@ -10,6 +11,7 @@ export default function Layout({ children }) {
     const [user, setUser] = useState(null);
     const [role, setRole] = useState(null);
     const [displayName, setDisplayName] = useState("");
+    const [warehouseCode, setWarehouseCode] = useState("");
 
     useEffect(() => {
         async function fetchUser() {
@@ -18,11 +20,12 @@ export default function Layout({ children }) {
                 setUser(session.user);
                 const { data: profile } = await supabase
                     .from("profiles")
-                    .select("role, display_name")
+                    .select("role, display_name, warehouse_code")
                     .eq("id", session.user.id)
                     .single();
                 setRole(profile?.role || "sale");
                 setDisplayName(profile?.display_name || session.user.email || "");
+                setWarehouseCode(profile?.warehouse_code || "");
             }
         }
         fetchUser();
@@ -61,8 +64,8 @@ export default function Layout({ children }) {
         { name: "แดชบอร์ด", path: "/dashboard", icon: "📊" },
         { name: "Sale Work", path: "/visits", icon: "📍" },
         { name: "เมนู", path: "/menu", icon: "🗂️", isCenter: true },
-        { name: "สร้าง SO", path: "/create-so", icon: "📝" },
-        { name: "สินค้า", path: "/inventory", icon: "📦" },
+        { name: "วางแผน", path: "/planning", icon: "🗓️" },
+        { name: "Orders", path: "/orders", icon: "📋" },
     ];
 
     if (HIDE_PATHS.some(p => router.pathname.startsWith(p))) {
@@ -83,11 +86,9 @@ export default function Layout({ children }) {
             {/* ─────────────────────────── MINIMAL HEADER ─────────────────────────── */}
             <header className="shrink-0 bg-white/90 backdrop-blur-md sticky top-0 z-40 border-b border-slate-200/50 shadow-sm">
                 <div className="max-w-screen-xl mx-auto px-4 h-14 flex items-center justify-between">
-                    <Link href="/dashboard" className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl glass-accent flex items-center justify-center text-white font-extrabold text-base shadow-md">
-                            H
-                        </div>
-                        <span className="text-lg font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 tracking-tight">
+                    <Link href="/dashboard" className="flex items-center gap-3">
+                        <img src="/logo.jpg" alt="Hanuman Logo" className="w-10 h-10 object-contain rounded-full shadow-sm" />
+                        <span className="text-xl font-black text-indigo-700 tracking-tighter">
                             H Force
                         </span>
                     </Link>
@@ -96,7 +97,14 @@ export default function Layout({ children }) {
                         <div className="flex items-center gap-2">
                             <div className="text-right leading-tight mr-1">
                                 <div className="text-xs font-bold text-indigo-900">{displayName}</div>
-                                <div className="text-[9px] text-indigo-400 uppercase font-semibold">{badge.label}</div>
+                                <div className="flex items-center justify-end gap-1">
+                                    {warehouseCode && (
+                                        <span className="text-[8px] px-1 bg-indigo-50 text-indigo-500 border border-indigo-100 rounded font-bold">
+                                            คลัง: {getLocationName(warehouseCode)}
+                                        </span>
+                                    )}
+                                    <div className="text-[9px] text-indigo-400 uppercase font-semibold">{badge.label}</div>
+                                </div>
                             </div>
                             <div className={`w-8 h-8 rounded-full ${badge.color} text-white flex items-center justify-center font-bold text-sm shadow-md`}>
                                 {avatar}

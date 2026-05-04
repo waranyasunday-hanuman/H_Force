@@ -211,6 +211,19 @@ export default function RMWarehousePage() {
                     ))}
                 </div>
 
+                <div className="grid grid-cols-2 gap-3 mb-5">
+                    <button onClick={() => router.push('/warehouse/receipts?type=RM')}
+                        className="py-3 bg-white border border-emerald-200 rounded-2xl text-emerald-600 hover:bg-emerald-50 transition-colors shadow-sm flex flex-col items-center justify-center gap-1">
+                        <span className="text-2xl">📥</span>
+                        <span className="text-xs font-black">รับเข้า RM</span>
+                    </button>
+                    <button onClick={() => router.push('/goods-issue?tab=RM')}
+                        className="py-3 bg-white border border-blue-200 rounded-2xl text-blue-600 hover:bg-blue-50 transition-colors shadow-sm flex flex-col items-center justify-center gap-1">
+                        <span className="text-2xl">📤</span>
+                        <span className="text-xs font-black">เบิก-จ่าย RM</span>
+                    </button>
+                </div>
+
                 {/* Search */}
                 <div className="mb-4">
                     <input type="text" placeholder="ค้นหาเลขที่คำขอ / ผู้ขอ..." value={search}

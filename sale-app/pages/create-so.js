@@ -4,6 +4,7 @@ import Layout from "../components/Layout";
 import Loading from "../components/Loading";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
+import Swal from "sweetalert2";
 
 // ─── Print SO Form ──────────────────────────────────────────────────────────
 function printSO({ order, customer, items, paymentType, dueDate, userEmail, date, discount, deposit }) {
@@ -261,6 +262,54 @@ function SearchableSelect({ options, value, onChange, placeholder, getKey, getLa
     );
 }
 
+function ThaiDatePicker({ value, onChange, label, colorCls = "indigo" }) {
+    const d = value ? new Date(value) : new Date();
+    const [day, setDay] = useState(d.getDate());
+    const [month, setMonth] = useState(d.getMonth() + 1);
+    const [year, setYear] = useState(d.getFullYear());
+
+    useEffect(() => {
+        const newDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        if (newDate !== value) onChange(newDate);
+    }, [day, month, year]);
+
+    useEffect(() => {
+        if (value) {
+            const dv = new Date(value);
+            if (!isNaN(dv.getTime())) {
+                setDay(dv.getDate());
+                setMonth(dv.getMonth() + 1);
+                setYear(dv.getFullYear());
+            }
+        }
+    }, [value]);
+
+    const days = Array.from({ length: 31 }, (_, i) => i + 1);
+    const months = [
+        { v: 1, n: "ม.ค." }, { v: 2, n: "ก.พ." }, { v: 3, n: "มี.ค." }, { v: 4, n: "เม.ย." },
+        { v: 5, n: "พ.ค." }, { v: 6, n: "มิ.ย." }, { v: 7, n: "ก.ค." }, { v: 8, n: "ส.ค." },
+        { v: 9, n: "ก.ย." }, { v: 10, n: "ต.ค." }, { v: 11, n: "พ.ย." }, { v: 12, n: "ธ.ค." }
+    ];
+    const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() + i);
+
+    return (
+        <div className="space-y-1.5">
+            {label && <label className={`block text-xs font-bold text-${colorCls}-600 mb-1.5`}>{label}</label>}
+            <div className="flex gap-2">
+                <select value={day} onChange={e => setDay(parseInt(e.target.value))} className="flex-1 px-2 py-2.5 text-sm rounded-xl border border-indigo-100 bg-white/70 outline-none focus:ring-2 focus:ring-indigo-100 font-bold text-center">
+                    {days.map(v => <option key={v} value={v}>{String(v).padStart(2, '0')}</option>)}
+                </select>
+                <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="flex-[1.5] px-2 py-2.5 text-sm rounded-xl border border-indigo-100 bg-white/70 outline-none focus:ring-2 focus:ring-indigo-100 font-bold text-center">
+                    {months.map(m => <option key={m.v} value={m.v}>{m.n}</option>)}
+                </select>
+                <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="flex-[1.2] px-2 py-2.5 text-sm rounded-xl border border-indigo-100 bg-white/70 outline-none focus:ring-2 focus:ring-indigo-100 font-bold text-center">
+                    {years.map(v => <option key={v} value={v}>{v + 543}</option>)}
+                </select>
+            </div>
+        </div>
+    );
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 export default function CreateSO() {
     const router = useRouter();
@@ -296,11 +345,18 @@ export default function CreateSO() {
     const [taxDocument, setTaxDocument] = useState(null);
 
     // Signature
-    const sigCanvas = useRef({});
+    const sigCanvas = useRef(null);
     const [signatureData, setSignatureData] = useState(null);
 
     // Manager
     const [managerRemarks, setManagerRemarks] = useState("");
+
+    // Delivery Method
+    const [deliveryMethod, setDeliveryMethod] = useState("stock_on_hand"); // stock_on_hand or office_delivery
+    const [deliveryAddress, setDeliveryAddress] = useState("");
+    const [deliveryDate, setDeliveryDate] = useState("");
+    const [deliveryRemarks, setDeliveryRemarks] = useState("");
+    const [deliveryLocation, setDeliveryLocation] = useState(null);
 
     const [userEmail, setUserEmail] = useState("Seller");
 
@@ -324,7 +380,11 @@ export default function CreateSO() {
                 const custData = await custRes.json();
                 const prodData = await prodRes.json();
                 if (custData.customers) setCustomers(custData.customers);
-                if (prodData.products) setProducts(prodData.products);
+                if (prodData.products) {
+                    // Filter only Finish Goods (PROD_TYPE == "1")
+                    const fgProducts = prodData.products.filter(p => p.PROD_TYPE === "1");
+                    setProducts(fgProducts);
+                }
 
                 if (orderId || visitId) {
                     const fetchUrl = orderId ? `/api/get-so?orderId=${orderId}` : `/api/get-so?planId=${visitId}`;
@@ -365,7 +425,11 @@ export default function CreateSO() {
 
     // Calculate Due Date automatically when date or creditDays change
     useEffect(() => {
-        if (paymentType === 'credit' && date) {
+        if (paymentType === 'cash' && date) {
+            const d = new Date(date);
+            d.setDate(d.getDate() + 3);
+            setDueDate(d.toISOString().split('T')[0]);
+        } else if (paymentType === 'credit' && date) {
             const d = new Date(date);
             d.setDate(d.getDate() + (parseInt(creditDays) || 0));
             setDueDate(d.toISOString().split('T')[0]);
@@ -392,6 +456,26 @@ export default function CreateSO() {
 
     const handleSlipUpload = (e) => { if (e.target.files?.[0]) setPaymentSlip(e.target.files[0]); };
     const handleTaxDocUpload = (e) => { if (e.target.files?.[0]) setTaxDocument(e.target.files[0]); };
+
+    const handleGetDeliveryLocation = () => {
+        if (!navigator.geolocation) {
+            Swal.fire("ไม่รองรับ", "เบราว์เซอร์ของคุณไม่รองรับการระบุพิกัด", "error");
+            return;
+        }
+        setFormLoading(true);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setDeliveryLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                setFormLoading(false);
+                Swal.fire("สำเร็จ", "ปักหมุดสถานที่จัดส่งเรียบร้อยแล้ว", "success");
+            },
+            (err) => {
+                console.error(err);
+                setFormLoading(false);
+                Swal.fire("ล้มเหลว", "ไม่สามารถเข้าถึงพิกัดได้ กรุณาอนุญาตการเข้าถึง GPS", "error");
+            }
+        );
+    };
 
     const fmtCurr = (v) => new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" }).format(v || 0);
     const fmt2 = (v) => (parseFloat(v) || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -436,9 +520,13 @@ export default function CreateSO() {
             setMessage({ text: "กรุณาแนบเอกสารสำหรับออกใบกำกับภาษี (ภ.พ.20 หรือ หนังสือรับรอง)", type: "error" });
             setFormLoading(false); return;
         }
+        if (deliveryMethod === 'office_delivery' && !deliveryLocation) {
+            setMessage({ text: "กรุณากดปุ่ม 'ปักหมุดสถานที่จัดส่ง' เพื่อระบุพิกัดให้ฝ่ายจัดส่ง", type: "error" });
+            setFormLoading(false); return;
+        }
 
         let sigUrl = signatureData;
-        if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
+        if (sigCanvas.current && typeof sigCanvas.current.isEmpty === 'function' && !sigCanvas.current.isEmpty()) {
             sigUrl = sigCanvas.current.getTrimmedCanvas().toDataURL("image/png");
         }
         
@@ -478,6 +566,11 @@ export default function CreateSO() {
                 signatureUrl: finalSigUrl,
                 managerRemarks: managerRemarks || "",
                 approverName: activeOrderId ? userEmail : "",
+                deliveryMethod,
+                deliveryAddress: deliveryMethod === 'office_delivery' ? deliveryAddress : "",
+                deliveryDate: deliveryMethod === 'office_delivery' ? deliveryDate : "",
+                deliveryRemarks: deliveryMethod === 'office_delivery' ? deliveryRemarks : "",
+                deliveryLocation: deliveryMethod === 'office_delivery' ? deliveryLocation : null,
             }];
 
             const soData = {
@@ -635,8 +728,7 @@ export default function CreateSO() {
                             <SectionLabel n="1" text="ข้อมูลเอกสาร & ลูกค้า" />
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-semibold text-indigo-600 mb-1.5">วันที่สั่งซื้อ</label>
-                                    <input type="date" value={date} onChange={e => setDate(e.target.value)} required className={inputCls} />
+                                    <ThaiDatePicker label="วันที่สั่งซื้อ" value={date} onChange={setDate} />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-indigo-600 mb-1.5">ลูกค้า</label>
@@ -832,10 +924,13 @@ export default function CreateSO() {
 
                             <div className="bg-white/60 rounded-2xl border border-white/80 p-4">
                                 {paymentType === "cash" && (
-                                    <div>
-                                        <label className="block text-xs font-bold text-indigo-600 mb-1.5">วันที่นำเงินสดฝากธนาคาร (Due Date) <span className="text-red-500">*</span></label>
-                                        <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required className={inputCls + " sm:w-1/2"} />
-                                        <p className="text-xs text-gray-400 mt-2">ระบบจะแจ้งเตือนให้นำเงินสดเข้าฝากตามกำหนด</p>
+                                    <div className="sm:w-3/4">
+                                        <ThaiDatePicker 
+                                            label="วันที่นำเงินสดฝากธนาคาร (Due Date) *" 
+                                            value={dueDate} 
+                                            onChange={setDueDate} 
+                                        />
+                                        <p className="text-xs text-gray-400 mt-2">ระบบจะแจ้งเตือนให้นำเงินสดเข้าฝากตามกำหนด (+3 วันอัตโนมัติ)</p>
                                     </div>
                                 )}
                                 {paymentType === "transfer" && (
@@ -859,14 +954,11 @@ export default function CreateSO() {
                                                 placeholder="เช่น 30"
                                             />
                                         </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-indigo-600 mb-1.5 font-sans">วันครบกำหนดชำระ (Due Date) <span className="text-red-500">*</span></label>
-                                            <input
-                                                type="date"
-                                                value={dueDate}
-                                                onChange={e => setDueDate(e.target.value)}
-                                                required
-                                                className={inputCls}
+                                        <div className="sm:col-span-2">
+                                            <ThaiDatePicker 
+                                                label="วันครบกำหนดชำระ (Due Date) *" 
+                                                value={dueDate} 
+                                                onChange={setDueDate} 
                                             />
                                         </div>
                                         <div className="sm:col-span-2">
@@ -877,9 +969,85 @@ export default function CreateSO() {
                             </div>
                         </div>
 
-                        {/* ── Section 4: Signature ── */}
+                        {/* ── Section 4: Delivery Method ── */}
                         <div className="glass p-5">
-                            <SectionLabel n="4" text="ลายมือชื่อลูกค้า (Electronic Signature)" />
+                            <SectionLabel n="4" text="วิธีการส่งสินค้า" />
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                <button type="button" onClick={() => setDeliveryMethod("stock_on_hand")}
+                                    className={`py-3 px-2 rounded-2xl border-2 font-bold text-sm transition-all flex flex-col items-center gap-1 ${
+                                        deliveryMethod === "stock_on_hand"
+                                            ? "border-emerald-500 bg-emerald-500 text-white shadow-lg shadow-emerald-200"
+                                            : "border-white/80 bg-white/60 text-gray-500 hover:border-emerald-200"
+                                    }`}>
+                                    <span className="text-2xl">📦</span>
+                                    ตัด Stock ในมือ
+                                </button>
+                                <button type="button" onClick={() => setDeliveryMethod("office_delivery")}
+                                    className={`py-3 px-2 rounded-2xl border-2 font-bold text-sm transition-all flex flex-col items-center gap-1 ${
+                                        deliveryMethod === "office_delivery"
+                                            ? "border-blue-500 bg-blue-500 text-white shadow-lg shadow-blue-200"
+                                            : "border-white/80 bg-white/60 text-gray-500 hover:border-blue-200"
+                                    }`}>
+                                    <span className="text-2xl">🏢</span>
+                                    สำนักงานส่ง
+                                </button>
+                            </div>
+
+                            {deliveryMethod === "office_delivery" && (
+                                <div className="bg-white/60 rounded-2xl border border-white/80 p-4 space-y-4 animate-fade-in">
+                                    <div>
+                                        <label className="block text-xs font-bold text-blue-600 mb-1.5">ที่อยู่จัดส่ง <span className="text-red-500">*</span></label>
+                                        <textarea 
+                                            value={deliveryAddress} 
+                                            onChange={e => setDeliveryAddress(e.target.value)}
+                                            rows="2"
+                                            placeholder="ระบุที่อยู่ที่ต้องการให้ไปส่ง..."
+                                            className={inputCls}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-blue-600 mb-1.5">ปักหมุดสถานที่จัดส่ง <span className="text-red-500">*</span></label>
+                                        <button 
+                                            type="button" 
+                                            onClick={handleGetDeliveryLocation}
+                                            className={`w-full py-3 px-4 rounded-xl border-2 flex items-center justify-center gap-2 transition-all ${deliveryLocation ? 'bg-emerald-50 border-emerald-200 text-emerald-700 font-bold' : 'bg-blue-50 border-blue-200 text-blue-700 font-bold hover:bg-blue-100'}`}
+                                        >
+                                            {deliveryLocation ? (
+                                                <><span>📍</span> พิกัด: {deliveryLocation.lat.toFixed(5)}, {deliveryLocation.lng.toFixed(5)} (แก้ไข)</>
+                                            ) : (
+                                                <><span>📍</span> กดเพื่อปักหมุดสถานที่ปัจจุบัน</>
+                                            )}
+                                        </button>
+                                        <p className="text-[10px] text-gray-400 mt-1.5 ml-1">พิกัดนี้จะถูกส่งให้พนักงานขับรถเพื่อนำทางในขั้นตอนการส่งสินค้า</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div>
+                                            <ThaiDatePicker 
+                                                label="วันที่ให้จัดส่ง *" 
+                                                value={deliveryDate} 
+                                                onChange={setDeliveryDate} 
+                                                colorCls="blue"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-blue-600 mb-1.5">หมายเหตุการจัดส่ง</label>
+                                            <input type="text" value={deliveryRemarks} onChange={e => setDeliveryRemarks(e.target.value)} placeholder="เช่น ระวังแตก, ส่งก่อนเที่ยง" className={inputCls} />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {deliveryMethod === "stock_on_hand" && (
+                                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center gap-3">
+                                    <span className="text-xl">✅</span>
+                                    <p className="text-xs font-bold text-emerald-700">ระบบจะทำการตัดสต็อกสินค้าจากรถ/คลังประจำตัวพนักงานทันทีเมื่อได้รับการอนุมัติ</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ── Section 5: Signature ── */}
+                        <div className="glass p-5">
+                            <SectionLabel n="5" text="ลายมือชื่อลูกค้า (Electronic Signature)" />
                             <div className="bg-white rounded-2xl border-2 border-dashed border-indigo-200 overflow-hidden relative">
                                 {signatureData ? (
                                     <div className="relative">

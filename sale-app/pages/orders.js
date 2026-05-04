@@ -3,6 +3,15 @@ import Layout from "../components/Layout";
 import Loading from "../components/Loading";
 import { supabase } from "../lib/supabase";
 
+const formatDate = (dateStr) => {
+    if (!dateStr) return "-";
+    const d = new Date(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
 export default function Orders() {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -227,7 +236,7 @@ export default function Orders() {
                                 {filteredOrders.map(order => (
                                     <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
                                         <td className="px-6 py-4">
-                                            <div className="font-semibold text-gray-900">{order.order_date}</div>
+                                            <div className="font-semibold text-gray-900">{formatDate(order.order_date)}</div>
                                             <div className="text-sm text-gray-500">ลูกค้า: {order.customer_code}</div>
                                         </td>
 

@@ -1,34 +1,18 @@
-const fs = require('fs');
-const path = require('path');
-const { getSessionKey, getProducts } = require('./lib/ecount');
+require('dotenv').config({ path: '.env.local' });
+const { getSessionKey, getProducts } = require('./lib/ecount.js');
 
-// Need to simulate environment variables
-const envFile = fs.readFileSync(path.join(__dirname, '.env.local'), 'utf8');
-envFile.split('\n').forEach(line => {
-    if (line && line.indexOf('=') !== -1) {
-        const parts = line.split('=');
-        process.env[parts[0].trim()] = parts[1].trim().replace(/^['"](.*)['"]$/, '$1');
-    }
-});
-
-async function runTest() {
+async function test() {
     try {
-        console.log("Logging in...");
+        console.log("Getting session key...");
         const auth = await getSessionKey();
-        console.log("Logged in:", auth.hostUrl);
-        
+        console.log("Session key:", auth.sessionKey);
         console.log("Fetching products...");
         const products = await getProducts(auth.sessionKey, auth.hostUrl);
-        
-        console.log(`Fetched ${products.length} products.`);
-        if (products.length > 0) {
-            console.log("First product:", JSON.stringify(products[0], null, 2));
-        } else {
-            console.log("Products is empty. Let's check why getProducts might be failing.");
-        }
-    } catch(err) {
-        console.error("Test failed:", err);
+        console.log("Products count:", products.length);
+        console.log(products.slice(0, 2));
+    } catch (e) {
+        console.error("Test failed:", e);
     }
 }
 
-runTest();
+test();

@@ -7,10 +7,21 @@ import Layout from "../components/Layout";
 export default function MenuPage() {
     const router = useRouter();
     const [now, setNow] = useState(null);
+    const [role, setRole] = useState(null);
 
     useEffect(() => {
         setNow(new Date());
         const timer = setInterval(() => setNow(new Date()), 1000);
+        
+        async function getRole() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                const { data } = await supabase.from("profiles").select("role").eq("id", session.user.id).single();
+                setRole(data?.role || "sale");
+            }
+        }
+        getRole();
+
         return () => clearInterval(timer);
     }, []);
 
@@ -21,37 +32,58 @@ export default function MenuPage() {
         hour: '2-digit', minute: '2-digit', second: '2-digit' 
     }) : '--:--:--';
 
-    const menuGroups = [
+    const isManager = role === "manager" || role === "admin";
+
+    const allMenuGroups = [
         {
             category: "ฝ่ายขาย (Sales)",
             icon: "💼",
             items: [
                 { name: "วางแผน",              path: "/planning",         icon: "🗓️", desc: "จัดตารางเส้นทาง" },
                 { name: "Sale Work",           path: "/visits",           icon: "📍", desc: "Check-in ลูกค้า" },
-                { name: "สร้าง SO",            path: "/create-so",        icon: "📝", desc: "ออเดอร์ใหม่" },
-                { name: "ลงทะเบียนลูกค้า",    path: "/create-customer",  icon: "🧑‍💼", desc: "ข้อมูลลูกค้า" },
+                { name: "สร้าง SO",            path: "/create-so",        icon: "📝", desc: "ออเดอร์ใหม่", managerOnly: true },
+                { name: "ลงทะเบียนลูกค้า",    path: "/create-customer",  icon: "🧑‍💼", desc: "ข้อมูลลูกค้า", managerOnly: true },
             ]
         },
         {
             category: "ฝ่ายคลังสินค้า (Warehouse)",
             icon: "📦",
+            managerOnly: true,
             items: [
-                { name: "เบิก-จ่ายสินค้า",     path: "/warehouse/issue",        icon: "📤", desc: "ขอเบิกและจ่ายสินค้า" },
-                { name: "Finish Goods",     path: "/warehouse/fg",       icon: "📦", desc: "รับ-โอน-ตัดจ่าย FG" },
-                { name: "Raw Material",     path: "/warehouse/rm",       icon: "🏗️", desc: "รับ-โอน-ตัดจ่าย RM" },
-                { name: "Report Center",    path: "/warehouse/reports",  icon: "📊", desc: "รายงานสต๊อก" },
+                { name: "ใบขอเบิก",             path: "/warehouse/issue/new",    icon: "📝", desc: "สร้างใบขอเบิกสินค้า" },
+                { name: "Finish Goods",         path: "/warehouse/fg",           icon: "📦", desc: "รับเข้า & เบิก-จ่าย FG" },
+                { name: "Raw Material",         path: "/warehouse/rm",           icon: "🏗️", desc: "รับเข้า & เบิก-จ่าย RM" },
+                { name: "Report Center",        path: "/warehouse/reports",      icon: "📊", desc: "รายงานสต๊อก" },
             ]
         },
         {
-            category: "ฝ่ายบริหาร / จัดการ",
+            category: "รายงาน (Reports)",
+            icon: "📊",
+            items: [
+                { name: "รายงานการเข้าพบ",     path: "/visit-report",    icon: "📋", desc: "สรุป Check-in/Out" },
+                { name: "รายงานการเดินทาง",    path: "/reports/trips",   icon: "🛣️", desc: "สถิติ Trip & ระยะทาง" },
+            ]
+        },
+        {
+            category: "ภาพรวม / จัดการ",
             icon: "⚙️",
             items: [
                 { name: "แดชบอร์ด",           path: "/dashboard",        icon: "📊", desc: "ภาพรวมสถิติ" },
-                { name: "รายการ Orders",      path: "/orders",           icon: "📋", desc: "อนุมัติ & ติดตาม" },
-                { name: "จัดการผู้ใช้",       path: "/user-management",  icon: "👥", desc: "สิทธิ์และ Role" },
+                { name: "รายการ Orders",      path: "/orders",           icon: "📋", desc: "ติดตามสถานะ" },
+                { name: "จัดการผู้ใช้",       path: "/user-management",  icon: "👥", desc: "สิทธิ์และ Role", managerOnly: true },
+                { name: "ทะเบียนสินค้า",      path: "/products-master",  icon: "📦", desc: "ฐานข้อมูลสินค้า" },
             ]
         }
     ];
+
+    // Filter menu for Sale
+    const menuGroups = allMenuGroups
+        .filter(g => isManager || !g.managerOnly)
+        .map(g => ({
+            ...g,
+            items: g.items.filter(i => isManager || !i.managerOnly)
+        }))
+        .filter(g => g.items.length > 0);
 
     const handleLogout = async () => {
         await fetch("/api/auth", {
@@ -83,10 +115,10 @@ export default function MenuPage() {
                 </div>
                 <button 
                     onClick={handleLogout}
-                    className="w-10 h-10 rounded-2xl bg-white text-rose-500 flex items-center justify-center text-lg shadow-md border border-slate-100 hover:bg-rose-500 hover:text-white transition-all active:scale-95"
+                    className="w-10 h-10 rounded-2xl bg-white text-rose-500 flex items-center justify-center text-xl shadow-md border border-rose-100 hover:bg-rose-600 hover:text-white transition-all active:scale-95 group"
                     title="ออกจากระบบ"
                 >
-                    🚪
+                    <span className="group-hover:rotate-12 transition-transform">⏻</span>
                 </button>
             </div>
 

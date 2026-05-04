@@ -8,10 +8,10 @@ export default async function handler(req, res) {
 
     try {
         console.log("Sync Start: Logging in to Ecount...");
-        const sessionKey = await getSessionKey();
+        const auth = await getSessionKey();
         
         console.log("Sync: Fetching customers from Ecount...");
-        const ecountCustomers = await getCustomers(sessionKey);
+        const ecountCustomers = await getCustomers(auth.sessionKey, auth.hostUrl);
 
         if (!ecountCustomers || ecountCustomers.length === 0) {
             console.log("Sync: No customers found in Ecount");

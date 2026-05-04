@@ -31,11 +31,48 @@ let lastUsedEndpoint = "oapi";
 let lastUsedHost = ""; 
 let lastUsedCookie = ""; // Store session cookie
 
+// Cache variables for session
+let cachedSessionKey = null;
+let cachedSessionExpiry = 0;
+
+// -----------------------------------------------
+// Browser-like headers เพื่อหลีกเลี่ยง WAF 412
+// Ecount WAF บล็อก request ที่ไม่มี headers เหมือน browser
+// -----------------------------------------------
+function getWafBypassHeaders(cookie, hostUrl) {
+    const host = hostUrl || lastUsedHost || "oapiia.ecount.com";
+    const origin = `https://${host.toLowerCase()}`;
+    return {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Origin": origin,
+        "Referer": `${origin}/`,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        ...(cookie ? { "Cookie": cookie } : {}),
+    };
+}
+
 // -----------------------------------------------
 // ขั้นตอนที่ 2: Login ขอ Session ID
 // Session ID ใช้แทน password ในการเรียก API อื่นๆ
 // -----------------------------------------------
-export async function getSessionKey() {
+export async function getSessionKey(forceRefresh = false) {
+    if (!forceRefresh && cachedSessionKey && Date.now() < cachedSessionExpiry) {
+        return {
+            sessionKey: cachedSessionKey,
+            hostUrl: lastUsedHost
+        };
+    }
+
     const zoneData = await getZone();
     const zone = zoneData.ZONE;
     const domain = zoneData.DOMAIN;
@@ -49,10 +86,7 @@ export async function getSessionKey() {
             console.log(`Attempting login at: ${loginUrl}`);
             const response = await fetch(loginUrl, {
                 method: "POST",
-                headers: { 
-                    "Content-Type": "application/json",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-                },
+                headers: getWafBypassHeaders(),
                 body: JSON.stringify({
                     COM_CODE: process.env.ECOUNT_COMPANY_CODE,
                     USER_ID: process.env.ECOUNT_USER_ID,
@@ -73,6 +107,10 @@ export async function getSessionKey() {
                 lastUsedCookie = (data.Data.Datas.SET_COOKIE || "").trim(); // Store the cookie and TRIM IT!
                 
                 console.log("ECOUNT Login Successful:", data.Data.Datas.SESSION_ID, "Host:", hostUrl);
+                
+                cachedSessionKey = data.Data.Datas.SESSION_ID;
+                cachedSessionExpiry = Date.now() + (10 * 60 * 1000); // Cache for 10 minutes
+
                 return {
                     sessionKey: data.Data.Datas.SESSION_ID,
                     hostUrl: hostUrl
@@ -106,11 +144,7 @@ export async function createCustomer(sessionKey, custData) {
         `${baseUrl}/AccountBasic/SaveBasicCust?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { 
-                "Content-Type": "application/json",
-                "Cookie": lastUsedCookie,
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            },
+            headers: getWafBypassHeaders(lastUsedCookie),
             body: JSON.stringify({
                 CustList: [
                     {
@@ -191,18 +225,14 @@ export async function createCustomer(sessionKey, custData) {
 // -----------------------------------------------
 // ดึงรายการลูกค้า (ดึงจริงจาก Ecount)
 // -----------------------------------------------
-export async function getCustomers(sessionKey) {
-    const baseUrl = await getBaseUrl();
+export async function getCustomers(sessionKey, hostUrl) {
+    const baseUrl = await getBaseUrl(hostUrl);
 
     const response = await fetch(
-        `${baseUrl}/AccountBasic/GetListCust`,
+        `${baseUrl}/AccountBasic/GetListCust?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { 
-                "Content-Type": "application/json",
-                "Cookie": lastUsedCookie,
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            },
+            headers: getWafBypassHeaders(lastUsedCookie, hostUrl),
             body: JSON.stringify({
                 COM_CODE: process.env.ECOUNT_COMPANY_CODE,
                 SESSION_ID: sessionKey,
@@ -229,27 +259,51 @@ export async function getCustomers(sessionKey) {
 // -----------------------------------------------
 // ดึงรายการสินค้า
 // -----------------------------------------------
-export async function getProducts(sessionKey, hostUrl) {
+export async function getProducts(sessionKey, hostUrl, _isRetry = false) {
     const baseUrl = await getBaseUrl(hostUrl);
     const url = `${baseUrl}/InventoryBasic/GetBasicProductsList?SESSION_ID=${sessionKey}`;
     
-    const response = await fetch(url, {
-        method: "POST",
-        headers: { 
-            "Content-Type": "application/json", 
-            "Accept": "application/json",
-            "Cookie": lastUsedCookie,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        },
-        body: JSON.stringify({ 
-            COM_CODE: String(process.env.ECOUNT_COMPANY_CODE || "917158")
-        }),
-    });
+    let rawText = "";
+    let data = null;
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: getWafBypassHeaders(lastUsedCookie, hostUrl),
+            body: JSON.stringify({ 
+                COM_CODE: String(process.env.ECOUNT_COMPANY_CODE || "917158"),
+                IsPaging: false,
+                Condition: ""
+            }),
+        });
 
-    const data = await response.json().catch(() => null);
+        rawText = await response.text();
+        data = JSON.parse(rawText);
+    } catch (parseErr) {
+        // Raw response ไม่ใช่ JSON — อาจเป็น HTML error page หรือ session หมดอายุ
+        console.error("Ecount getProducts: JSON parse failed. Raw response (first 500 chars):", rawText.slice(0, 500));
+
+        // ลอง re-login อัตโนมัติ 1 ครั้ง
+        if (!_isRetry) {
+            console.warn("getProducts: Attempting auto-retry with fresh session...");
+            const freshAuth = await getSessionKey(true); // force refresh
+            return getProducts(freshAuth.sessionKey, freshAuth.hostUrl, true);
+        }
+        throw new Error(`Ecount getProducts Error: No data (response was not JSON). See server logs.`);
+    }
+
     if (!data || (data.Status !== "200" && data.Status !== 200)) {
-        console.error("Ecount GetBasicProductsList failed", data);
-        return [];
+        console.error("Ecount GetBasicProductsList failed. Status:", data?.Status, "Errors:", JSON.stringify(data?.Errors || data));
+
+        // Session หมดอายุ (status 401 หรือ Errors บอก session invalid) — retry อัตโนมัติ 1 ครั้ง
+        const isSessionError = data?.Status === 401 || data?.Status === "401" ||
+            JSON.stringify(data?.Errors || "").toLowerCase().includes("session");
+        if (!_isRetry && isSessionError) {
+            console.warn("getProducts: Session error detected, retrying with fresh session...");
+            const freshAuth = await getSessionKey(true);
+            return getProducts(freshAuth.sessionKey, freshAuth.hostUrl, true);
+        }
+
+        throw new Error(`Ecount getProducts Error: ${data ? data.Status : "No data"}`);
     }
     return data.Data?.Result || [];
 }
@@ -316,11 +370,7 @@ export async function getSalesReport(sessionKey, startDate, endDate) {
         `${baseUrl}/Sale/GetSaleListPost?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { 
-                "Content-Type": "application/json",
-                "Cookie": lastUsedCookie,
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            },
+            headers: getWafBypassHeaders(lastUsedCookie),
             body: JSON.stringify({
                 COM_CODE: process.env.ECOUNT_COMPANY_CODE,
                 START_DATE: startDate, // เช่น "20240401"
@@ -342,11 +392,7 @@ export async function getInventoryBalance(sessionKey, hostUrl, baseDate, warehou
     
     const response = await fetch(url, {
         method: "POST",
-        headers: { 
-            "Content-Type": "application/json",
-            "Cookie": lastUsedCookie,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        },
+        headers: getWafBypassHeaders(lastUsedCookie, hostUrl),
         body: JSON.stringify({
             COM_CODE: String(process.env.ECOUNT_COMPANY_CODE || "917158"),
             BASE_DATE: String(baseDate || new Date().toISOString().split('T')[0].replace(/-/g, '')),
@@ -381,6 +427,7 @@ export async function createGoodsIssue(sessionKey, hostUrl, issueData) {
             PRICE: item.price ? String(item.price) : "", // ราคา
             REMARKS: issueData.remarks || "",       // หมายเหตุหัวเอกสาร
             REMARKS_WIN: item.remarks || "",        // หมายเหตุรายบรรทัด (Ecount ใช้ REMARKS_WIN)
+            SERIAL_NO: item.lotNo || "",            // รหัส Lot / Serial
             CUST: issueData.custCode || "",         // รหัสลูกค้า/ผู้จำหน่าย
             EMP_CD: issueData.empCode || "",        // รหัสพนักงาน (PIC)
             PJT_CD: issueData.pjtCode || "",        // รหัสโปรเจกต์
@@ -391,11 +438,7 @@ export async function createGoodsIssue(sessionKey, hostUrl, issueData) {
         `${baseUrl}/Inventory/SaveGoodsIssue?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { 
-                "Content-Type": "application/json",
-                "Cookie": lastUsedCookie,
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            },
+            headers: getWafBypassHeaders(lastUsedCookie, hostUrl),
             body: JSON.stringify({
                 GoodsIssueList: goodsIssueList
             }),
@@ -431,12 +474,14 @@ export async function createGoodsReceipt(sessionKey, hostUrl, receiptData) {
         BulkDatas: {
             UPLOAD_SER_NO: "1",                     // รวมรายการในเอกสารเดียวกัน
             IO_DATE: receiptData.date,              // วันที่ (YYYYMMDD)
-            WH_CD: receiptData.inWarehouseCode || process.env.ECOUNT_WH_CD || "ST002", // คลังที่รับเข้า
+            WH_CD: item.inWarehouseCode || receiptData.inWarehouseCode || process.env.ECOUNT_WH_CD || "ST002", // คลังที่รับเข้า
             PROD_CD: item.productCode,              // รหัสสินค้า
             QTY: String(item.quantity || 1),        // จำนวนที่รับเข้า
             PRICE: item.price ? String(item.price) : "", // ราคา
             REMARKS: receiptData.remarks || "",     // หมายเหตุหัวเอกสาร
             REMARKS_WIN: item.remarks || "",        // หมายเหตุรายบรรทัด
+            SERIAL_NO: item.lotNo || "",            // รหัส Lot / Serial
+            EXPIRE_DATE: item.expireDate ? item.expireDate.replace(/-/g, '') : "", // วันหมดอายุ
             CUST: receiptData.custCode || "",       // รหัสผู้จำหน่าย
             EMP_CD: receiptData.empCode || "",      // รหัสพนักงาน
             PJT_CD: receiptData.pjtCode || "",      // รหัสโปรเจกต์
@@ -447,11 +492,7 @@ export async function createGoodsReceipt(sessionKey, hostUrl, receiptData) {
         `${baseUrl}/Inventory/SaveGoodsReceipt?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { 
-                "Content-Type": "application/json",
-                "Cookie": lastUsedCookie,
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            },
+            headers: getWafBypassHeaders(lastUsedCookie, hostUrl),
             body: JSON.stringify({
                 GoodsReceiptList: goodsReceiptList
             }),
@@ -501,11 +542,7 @@ export async function createInvoiceAuto(sessionKey, hostUrl, invoiceData) {
         `${baseUrl}/InvoiceAuto/SaveInvoiceAuto?SESSION_ID=${sessionKey}`,
         {
             method: "POST",
-            headers: { 
-                "Content-Type": "application/json",
-                "Cookie": lastUsedCookie,
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            },
+            headers: getWafBypassHeaders(lastUsedCookie, hostUrl),
             body: JSON.stringify({
                 InvoiceAutoList: invoiceAutoList
             }),

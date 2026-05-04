@@ -16,8 +16,8 @@ export default async function handler(req, res) {
             remarks: `[${issueData.type}] ${issueData.remarks || ""}`.trim()
         };
 
-        const sessionKey = await getSessionKey();
-        const result = await createGoodsIssue(sessionKey, enhancedIssueData);
+        const { sessionKey, hostUrl } = await getSessionKey();
+        const result = await createGoodsIssue(sessionKey, hostUrl, enhancedIssueData);
 
         res.status(200).json({ success: true, result });
     } catch (error) {

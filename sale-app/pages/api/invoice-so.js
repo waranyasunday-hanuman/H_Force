@@ -28,7 +28,7 @@ export default async function handler(req, res) {
         }
 
         // 2. Push to Ecount Invoice
-        const sessionKey = await getSessionKey();
+        const { sessionKey, hostUrl } = await getSessionKey();
         
         // Ecount TRX_DATE requires YYYYMMDD format without hyphens
         const formattedEcountDate = invoiceDate.replace(/-/g, "");
@@ -53,7 +53,7 @@ export default async function handler(req, res) {
                     }))
                 };
                 console.log("Auto-deducting stock for SO", id);
-                await createGoodsIssue(sessionKey, issueData);
+                await createGoodsIssue(sessionKey, hostUrl, issueData);
             }
         } catch (issueErr) {
             console.error("Auto Stock Deduct Failed:", issueErr);
@@ -69,7 +69,7 @@ export default async function handler(req, res) {
             remarks: "สร้างอัตโนมัติจากแอปมือถือ (Sales App - อนุมัติแล้ว)"
         };
 
-        await createInvoiceAuto(sessionKey, invoiceData);
+        await createInvoiceAuto(sessionKey, hostUrl, invoiceData);
 
         // 3. Update Supabase with invoiced status
         const { data: updatedOrder, error: updateError } = await supabase

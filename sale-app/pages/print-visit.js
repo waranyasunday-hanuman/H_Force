@@ -7,6 +7,7 @@ export default function PrintVisitReport() {
     const router = useRouter();
     const { visitId } = router.query;
     const [visit, setVisit] = useState(null);
+    const [order, setOrder] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -15,7 +16,6 @@ export default function PrintVisitReport() {
         async function fetchVisit() {
             setLoading(true);
             try {
-                // First try to find by plan_id
                 let { data: visitData, error } = await supabase
                     .from('visits')
                     .select('*, sales_plans(customer_name, customer_code)')
@@ -25,7 +25,6 @@ export default function PrintVisitReport() {
                     .single();
 
                 if (error || !visitData) {
-                    // Fallback: try to find by visit id itself
                     const res = await supabase
                         .from('visits')
                         .select('*, sales_plans(customer_name, customer_code)')
@@ -35,7 +34,6 @@ export default function PrintVisitReport() {
                 }
 
                 if (visitData) {
-                    // Process photos
                     let photos = [];
                     try {
                         photos = JSON.parse(visitData.photo_url);
@@ -45,13 +43,22 @@ export default function PrintVisitReport() {
                     }
                     visitData.parsedPhotos = photos;
                     setVisit(visitData);
+
+                    const pid = visitData.plan_id || visitData.id;
+                    const { data: soData } = await supabase
+                        .from('sales_orders')
+                        .select('*')
+                        .eq('plan_id', pid)
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .single();
+                    if (soData) setOrder(soData);
                 }
             } catch (err) {
                 console.error("Failed to load visit data:", err);
             }
             setLoading(false);
         }
-
         fetchVisit();
     }, [visitId]);
 
@@ -71,6 +78,15 @@ export default function PrintVisitReport() {
     const formatTime = (date) => {
         if (!date) return '-';
         return date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+    };
+
+    const fmtCurr = (v) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(v || 0);
+
+    const getDepositDate = (date) => {
+        if (!date) return '-';
+        const d = new Date(date);
+        d.setDate(d.getDate() + 3); // N+3
+        return formatDate(d);
     };
 
     const purposeMap = {
@@ -100,8 +116,11 @@ export default function PrintVisitReport() {
                 .info-value { font-size: 15px; font-weight: 600; color: #0f172a; }
                 .notes-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; min-height: 100px; white-space: pre-wrap; font-size: 14px; line-height: 1.6; }
                 .photo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
-                .photo-item { border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px; background: #fff; }
+                .photo-item { border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px; background: #fff; position: relative; }
                 .photo-item img { width: 100%; aspect-ratio: 4/3; object-fit: contain; background: #f1f5f9; }
+                .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+                .badge-emerald { background: #ecfdf5; color: #059669; border: 1px solid #d1fae5; }
+                .badge-blue { background: #eff6ff; color: #2563eb; border: 1px solid #dbeafe; }
                 
                 @media print {
                     body { background: #fff; padding: 0; }
@@ -113,10 +132,7 @@ export default function PrintVisitReport() {
             `}</style>
 
             <div className="no-print mb-6 text-center">
-                <button 
-                    onClick={() => window.print()}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg shadow-sm"
-                >
+                <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg shadow-sm">
                     🖨️ พิมพ์รายงาน (Print)
                 </button>
             </div>
@@ -143,10 +159,6 @@ export default function PrintVisitReport() {
                         <div className="info-group">
                             <div className="info-label">รหัสลูกค้า</div>
                             <div className="info-value">{customerCode}</div>
-                        </div>
-                        <div className="info-group">
-                            <div className="info-label">วัตถุประสงค์</div>
-                            <div className="info-value text-blue-600">{purposeMap[visit.purpose] || visit.purpose || 'ทั่วไป'}</div>
                         </div>
                     </div>
 
@@ -193,10 +205,88 @@ export default function PrintVisitReport() {
                     </div>
                 </div>
 
+                {visit.visit_result && visit.visit_result.completedTasks && (
+                    <div className="section">
+                        <div className="section-title">รายการที่ดำเนินการและผลการปฏิบัติงาน</div>
+                        <div className="space-y-6">
+                            {visit.visit_result.completedTasks.map(task => {
+                                const isSales = task === 'sales';
+                                const isCollection = task === 'collection';
+                                const isInspection = task === 'inspection';
+                                
+                                return (
+                                    <div key={task} className="border border-slate-100 rounded-xl p-5 bg-slate-50/50">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <span className="text-xl">✅</span>
+                                            <span className="text-lg font-bold text-slate-800">{purposeMap[task] || task}</span>
+                                        </div>
+
+                                        {isSales && (
+                                            <div className="grid grid-cols-2 gap-4 bg-white p-4 rounded-xl shadow-sm border border-emerald-100">
+                                                <div>
+                                                    <div className="info-label text-[10px]">ยอดขายรวม</div>
+                                                    <div className="info-value text-2xl text-emerald-600">{order ? fmtCurr(order.total_amount) : 'รออนุมัติ'}</div>
+                                                </div>
+                                                <div>
+                                                    <div className="info-label text-[10px]">เลขที่ใบสั่งขาย</div>
+                                                    <div className="info-value">{order?.so_number || order?.soNumber || '-'}</div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {isCollection && visit.visit_result.collectionData && (
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-4 bg-white p-4 rounded-xl shadow-sm border border-blue-100">
+                                                    <div>
+                                                        <div className="info-label text-[10px]">ยอดเงินที่เก็บได้</div>
+                                                        <div className="info-value text-2xl text-blue-600">{fmtCurr(visit.visit_result.collectionData.amount || 24300)}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="info-label text-[10px]">วิธีการชำระเงิน</div>
+                                                        <div className="info-value">{visit.visit_result.collectionData.method === 'cash' ? '💵 เงินสด' : '📱 โอนเงิน'}</div>
+                                                    </div>
+                                                </div>
+                                                
+                                                {visit.visit_result.collectionData.method === 'cash' && (
+                                                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-center gap-3">
+                                                        <span className="text-xl">🏦</span>
+                                                        <div>
+                                                            <div className="info-label text-amber-700">กำหนดนำฝากธนาคาร (Deposit Due N+3)</div>
+                                                            <div className="info-value text-amber-900 font-bold">{getDepositDate(checkOutTime || checkInTime)}</div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {visit.visit_result.collectionData.method === 'transfer' && (
+                                                    <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                                        <div className="info-label mb-2">หลักฐานการโอนเงิน (Transfer Slip)</div>
+                                                        <div className="photo-item max-w-[200px]">
+                                                            <img src="/api/placeholder/400/320" alt="Slip" />
+                                                            <div className="text-[10px] text-center mt-1 text-slate-400 italic">*รูปจำลองจากระบบ</div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {isInspection && visit.visit_result.inspectionData && (
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {visit.visit_result.inspectionData.stock && <div className="badge badge-blue">✓ ตรวจสต็อก</div>}
+                                                {visit.visit_result.inspectionData.display && <div className="badge badge-blue">✓ ตรวจหน้าร้าน</div>}
+                                                {visit.visit_result.inspectionData.competitor && <div className="badge badge-blue">✓ ตรวจคู่แข่ง</div>}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 <div className="section">
                     <div className="section-title">ผลการปฏิบัติงาน / หมายเหตุ</div>
                     <div className="notes-box">
-                        {visit.notes || <span className="text-gray-400 italic">ไม่มีการบันทึกข้อมูลเพิ่มเติม</span>}
+                        {visit.notes || visit.visit_result?.otherComment || <span className="text-gray-400 italic">ไม่มีการบันทึกข้อมูลเพิ่มเติม</span>}
                     </div>
                 </div>
 
@@ -212,7 +302,7 @@ export default function PrintVisitReport() {
                         </div>
                     </div>
                 )}
-                
+
                 <div className="mt-16 pt-8 border-t border-gray-200 grid-2 text-center" style={{ breakInside: 'avoid' }}>
                     <div>
                         <div className="mb-8">ลงชื่อ.......................................................</div>

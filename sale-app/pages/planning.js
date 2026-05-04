@@ -2,6 +2,16 @@ import { useState, useEffect } from "react";
 import Layout from "../components/Layout";
 import { supabase } from "../lib/supabase";
 import Swal from 'sweetalert2';
+import AddPlanModal from "../components/AddPlanModal";
+
+const formatDate = (dateStr) => {
+    if (!dateStr) return "-";
+    const d = new Date(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+};
 
 const PURPOSE_CONFIG = {
     "นำเสนอสินค้า": { color: "bg-green-100 text-green-700 border-green-200",   dot: "bg-green-500",   label: "เสนอขาย" },
@@ -33,17 +43,6 @@ export default function PlanningPage() {
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [viewingPlan, setViewingPlan] = useState(null);
     const [preselectedDate, setPreselectedDate] = useState("");
-
-    // Form State
-    const [customerType, setCustomerType] = useState("old");
-    const [newPlanCode, setNewPlanCode] = useState("");
-    const [newPlanName, setNewPlanName] = useState("");
-    const [contactName, setContactName] = useState("");
-    const [phone, setPhone] = useState("");
-    const [newPlanDate, setNewPlanDate] = useState("");
-    const [newPlanTime, setNewPlanTime] = useState("");
-    const [newPlanPurpose, setNewPlanPurpose] = useState("นำเสนอสินค้า");
-    const [location, setLocation] = useState("");
     const [planSOs, setPlanSOs] = useState({});
 
     useEffect(() => {
@@ -52,7 +51,6 @@ export default function PlanningPage() {
             if (session?.user) {
                 setUser(session.user);
                 fetchPlans(session.user.id);
-                fetchCustomers();
             }
         };
         init();
@@ -86,26 +84,13 @@ export default function PlanningPage() {
         }
     };
 
-    const fetchCustomers = async () => {
-        try {
-            const res = await fetch('/api/customers');
-            const data = await res.json();
-            if (data.customers) setCustomers(data.customers);
-        } catch (e) { console.error(e); }
-    };
-
     const openModal = (dateStr = "") => {
         setPreselectedDate(dateStr);
-        setNewPlanDate(dateStr);
         setIsModalOpen(true);
     };
 
     const closeModal = () => {
         setIsModalOpen(false);
-        setNewPlanName(""); setNewPlanCode(""); setContactName("");
-        setPhone(""); setNewPlanDate(""); setNewPlanTime("");
-        setLocation(""); setNewPlanPurpose("นำเสนอสินค้า");
-        setCustomerType("old");
     };
 
     const openDetailModal = async (plan) => {
@@ -163,37 +148,7 @@ export default function PlanningPage() {
         }
     };
 
-    const handleSaveNewPlan = async () => {
-        if (!user) { Swal.fire('Error', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง', 'error'); return; }
-        if (!newPlanDate) { Swal.fire('ข้อมูลไม่ครบ', 'กรุณาระบุวันที่เข้าพบ', 'warning'); return; }
-        
-        let finalName = newPlanName, finalCode = null;
-        
-        // ถ้าเป็นวันหยุด ไม่ต้องเช็คชื่อลูกค้า
-        if (newPlanPurpose === "วันหยุดประจำสัปดาห์") {
-            finalName = "วันหยุดประจำสัปดาห์";
-        } else {
-            if (customerType === "old") {
-                const c = customers.find(c => c.CUST_CODE === newPlanCode);
-                if (!c) { Swal.fire('ข้อมูลไม่ครบ', 'กรุณาเลือกลูกค้าเก่า', 'warning'); return; }
-                finalName = c.CUST_NAME; finalCode = c.CUST_CODE;
-            } else {
-                if (!finalName) { Swal.fire('ข้อมูลไม่ครบ', 'กรุณาระบุชื่อร้าน/ลูกค้าใหม่', 'warning'); return; }
-            }
-        }
-
-        const noteContent = `ผู้ติดต่อ: ${contactName || '-'}\nเบอร์โทร: ${phone || '-'}\nสถานที่: ${location || '-'}`;
-        const { error } = await supabase.from('sales_plans').insert([{
-            user_id: user.id, customer_code: finalCode, customer_name: finalName,
-            plan_date: newPlanDate, plan_time: newPlanTime || null,
-            purpose: newPlanPurpose, notes: noteContent
-        }]);
-        if (!error) {
-            fetchPlans(user.id);
-            closeModal();
-            Swal.fire({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2500, icon: 'success', title: 'บันทึกแผนงานเรียบร้อย', customClass: { popup: 'rounded-2xl' } });
-        }
-    };
+    // handleSaveNewPlan logic is now in AddPlanModal component
 
     const onDragStart = (e, planId, oldDate) => {
         e.dataTransfer.setData("planId", planId);
@@ -273,9 +228,9 @@ export default function PlanningPage() {
                         </div>
                         <button
                             onClick={() => openModal()}
-                            className="text-sm font-bold text-white bg-indigo-600 px-5 py-2.5 rounded-full hover:bg-indigo-700 transition-colors shadow-md hover:shadow-lg transform hover:-translate-y-0.5 whitespace-nowrap"
+                            className="text-sm font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-5 py-2.5 rounded-full hover:bg-indigo-100 transition-all shadow-sm hover:shadow-md transform hover:-translate-y-0.5 whitespace-nowrap flex items-center gap-2"
                         >
-                            + เพิ่มแผนงาน
+                            <span className="text-lg leading-none">+</span> เพิ่มแผนงาน
                         </button>
                     </div>
                 </div>
@@ -369,143 +324,13 @@ export default function PlanningPage() {
             </div>
 
             {/* ─── Premium Modal ─── */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm" onClick={closeModal}>
-                    <div
-                        className="bg-white w-full sm:max-w-md rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl border border-white/50 max-h-[92vh] flex flex-col"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        {/* Modal Handle (mobile) */}
-                        <div className="flex justify-center pt-3 pb-1 sm:hidden">
-                            <div className="w-10 h-1 bg-slate-300 rounded-full"></div>
-                        </div>
-
-                        {/* Modal Header */}
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
-                            <div>
-                                <h2 className="text-lg font-bold text-slate-800">เพิ่มแผนเข้าพบลูกค้า</h2>
-                                {preselectedDate && (
-                                    <p className="text-xs text-indigo-500 font-semibold mt-0.5">
-                                        📅 {new Date(preselectedDate + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })}
-                                    </p>
-                                )}
-                            </div>
-                            <button onClick={closeModal} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors text-sm">
-                                ✕
-                            </button>
-                        </div>
-
-                        {/* Modal Body */}
-                        <div className="p-6 space-y-4 overflow-y-auto flex-1">
-                            {/* จุดประสงค์ */}
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">จุดประสงค์</label>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                    {Object.entries(PURPOSE_CONFIG).map(([key, cfg]) => (
-                                        <button
-                                            key={key}
-                                            onClick={() => setNewPlanPurpose(key)}
-                                            className={`flex items-center gap-2 px-3 py-2.5 rounded-2xl border text-xs font-bold transition-all ${newPlanPurpose === key ? cfg.color + ' ring-2 ring-indigo-400' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}
-                                        >
-                                            <span className={`w-2 h-2 rounded-full shrink-0 ${newPlanPurpose === key ? cfg.dot : 'bg-slate-300'}`}></span>
-                                            {key}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* วันที่ & เวลา */}
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">วันที่เข้าพบ</label>
-                                    <input type="date" value={newPlanDate} onChange={(e) => setNewPlanDate(e.target.value)}
-                                        className="w-full p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-indigo-400 outline-none" />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">ช่วงเวลา</label>
-                                    <input type="time" value={newPlanTime} onChange={(e) => setNewPlanTime(e.target.value)}
-                                        className="w-full p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-indigo-400 outline-none" />
-                                </div>
-                            </div>
-
-                            {newPlanPurpose !== "วันหยุดประจำสัปดาห์" && (
-                                <>
-                                    {/* ประเภทลูกค้า */}
-                                    <div className="flex bg-slate-100 p-1 rounded-2xl">
-                                        {["old", "new"].map(type => (
-                                            <button
-                                                key={type}
-                                                onClick={() => setCustomerType(type)}
-                                                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${customerType === type ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
-                                            >
-                                                {type === "old" ? "ลูกค้าเก่า (ในระบบ)" : "ลูกค้าใหม่"}
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    {/* ชื่อลูกค้า */}
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">
-                                            {customerType === "old" ? "เลือกลูกค้า" : "ชื่อร้าน / บริษัท"}
-                                        </label>
-                                        {customerType === "old" ? (
-                                            <select
-                                                value={newPlanCode}
-                                                onChange={(e) => setNewPlanCode(e.target.value)}
-                                                className="w-full p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-700 focus:ring-2 focus:ring-indigo-400 outline-none appearance-none"
-                                            >
-                                                <option value="">-- เลือกลูกค้า --</option>
-                                                {customers.map(c => (
-                                                    <option key={c.CUST_CODE} value={c.CUST_CODE}>[{c.CUST_CODE}] {c.CUST_NAME}</option>
-                                                ))}
-                                            </select>
-                                        ) : (
-                                            <input
-                                                type="text" value={newPlanName} onChange={(e) => setNewPlanName(e.target.value)}
-                                                placeholder="ระบุชื่อร้านค้า..."
-                                                className="w-full p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-indigo-400 outline-none"
-                                            />
-                                        )}
-                                    </div>
-
-                                    {/* ผู้ติดต่อ & เบอร์โทร */}
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">ชื่อผู้ติดต่อ</label>
-                                            <input type="text" value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="ชื่อคนติดต่อ"
-                                                className="w-full p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-indigo-400 outline-none" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">เบอร์โทรศัพท์</label>
-                                            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="08X-XXX-XXXX"
-                                                className="w-full p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-indigo-400 outline-none" />
-                                        </div>
-                                    </div>
-
-                                    {/* สถานที่ */}
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">สถานที่ / Location</label>
-                                        <textarea value={location} onChange={(e) => setLocation(e.target.value)}
-                                            placeholder="ระบุที่อยู่, พิกัด หรือจุดสังเกต..."
-                                            className="w-full p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-indigo-400 outline-none h-16 resize-none"
-                                        ></textarea>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-
-                        {/* Modal Footer */}
-                        <div className="px-6 pb-6 pt-4 border-t border-slate-100 flex gap-3 shrink-0">
-                            <button onClick={closeModal} className="flex-1 py-3.5 rounded-2xl text-slate-500 font-bold bg-slate-100 hover:bg-slate-200 transition-colors">
-                                ยกเลิก
-                            </button>
-                            <button onClick={handleSaveNewPlan} className="flex-1 py-3.5 rounded-2xl text-white font-bold bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all transform hover:-translate-y-0.5">
-                                บันทึกแผนงาน
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <AddPlanModal 
+                isOpen={isModalOpen}
+                onClose={closeModal}
+                onSave={() => user && fetchPlans(user.id)}
+                preselectedDate={preselectedDate}
+                userId={user?.id}
+            />
 
             {/* ─── Detail Modal ─── */}
             {isDetailModalOpen && viewingPlan && (
@@ -530,7 +355,7 @@ export default function PlanningPage() {
                                 </div>
                                 <h2 className="text-2xl font-black text-slate-800 leading-tight mb-1">{viewingPlan.customer_name}</h2>
                                 <p className="text-sm font-bold text-indigo-600">
-                                    {new Date(viewingPlan.plan_date + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                    {formatDate(viewingPlan.plan_date)}
                                 </p>
                             </div>
 
@@ -560,7 +385,7 @@ export default function PlanningPage() {
                                     <div className="space-y-2">
                                         {viewingPlan.reschedule_history.map((hist, idx) => (
                                             <div key={idx} className="text-xs text-slate-400 font-bold bg-amber-50/50 p-3 rounded-2xl border border-amber-100/50">
-                                                เลื่อนมาจากวันที่ {hist.from} → {hist.to}
+                                                เลื่อนมาจากวันที่ {formatDate(hist.from)} → {formatDate(hist.to)}
                                             </div>
                                         ))}
                                     </div>

@@ -7,8 +7,8 @@ export default async function handler(req, res) {
     }
 
     try {
-        const sessionKey = await getSessionKey();
-        const ecountCustomers = await getCustomers(sessionKey);
+        const auth = await getSessionKey();
+        const ecountCustomers = await getCustomers(auth.sessionKey, auth.hostUrl);
         
         // Transform Ecount data to standard format
         const customers = (ecountCustomers || []).map(c => ({

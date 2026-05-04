@@ -28,22 +28,57 @@ export default async function handler(req, res) {
         // 2. Update Supabase
         const totalAmount = soData.items.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 0)), 0);
         
-        const { data, error } = await supabase
+        const updatePayload = { 
+            customer_code: soData.customerCode,
+            items: soData.items,
+            payment_type: soData.paymentType,
+            payment_slip_url: soData.paymentSlipUrl,
+            due_date: soData.dueDate,
+            need_tax_invoice: soData.needTaxInvoice,
+            tax_document_url: soData.taxDocumentUrl,
+            total_amount: totalAmount,
+            approval_status: 'approved' 
+        };
+
+        let { data, error } = await supabase
             .from("sales_orders")
-            .update({ 
-                customer_code: soData.customerCode,
-                items: soData.items,
-                payment_type: soData.paymentType,
-                payment_slip_url: soData.paymentSlipUrl,
-                due_date: soData.dueDate,
-                need_tax_invoice: soData.needTaxInvoice,
-                tax_document_url: soData.taxDocumentUrl,
-                total_amount: totalAmount,
-                approval_status: 'approved' 
-            })
+            .update(updatePayload)
             .eq("id", id)
             .select()
             .single();
+
+        // If missing column error (PGRST204 or similar message)
+        if (error && (error.code === 'PGRST204' || error.message.includes('need_tax_invoice'))) {
+            console.warn("Falling back to safe update due to missing columns");
+            
+            // Move problematic fields into metadata within items
+            const safeItems = Array.isArray(soData.items) ? [...soData.items] : [soData.items];
+            safeItems.push({
+                isMetadata: true,
+                needTaxInvoice: soData.needTaxInvoice,
+                taxDocumentUrl: soData.taxDocumentUrl,
+                paymentType: soData.paymentType,
+                dueDate: soData.dueDate,
+                updatedAt: new Date().toISOString()
+            });
+
+            const safePayload = {
+                customer_code: soData.customerCode,
+                items: safeItems,
+                total_amount: totalAmount,
+                approval_status: 'approved'
+            };
+
+            const retry = await supabase
+                .from("sales_orders")
+                .update(safePayload)
+                .eq("id", id)
+                .select()
+                .single();
+            
+            data = retry.data;
+            error = retry.error;
+        }
 
         if (error) {
             throw error;

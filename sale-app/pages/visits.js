@@ -4,6 +4,16 @@ import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
 import dynamic from 'next/dynamic';
 import Swal from 'sweetalert2';
+import AddPlanModal from "../components/AddPlanModal";
+
+const formatDate = (dateStr) => {
+    if (!dateStr) return "-";
+    const d = new Date(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+};
 
 const PURPOSE_CONFIG = {
     "นำเสนอสินค้า": { 
@@ -106,6 +116,9 @@ export default function SaleWorkPage() {
     const [collectionData, setCollectionData] = useState({ amount: 0, method: 'cash' });
     const [otherComment, setOtherComment] = useState("");
     
+    // Add Plan States
+    const [isAddPlanModalOpen, setIsAddPlanModalOpen] = useState(false);
+
     useEffect(() => {
         if (selectedPlan && step === 1) {
             document.body.style.overflow = 'hidden';
@@ -179,13 +192,22 @@ export default function SaleWorkPage() {
     const fetchOrders = async (userId) => {
         const { data, error } = await supabase
             .from('sales_orders')
-            .select('customer_code, order_date, created_at');
+            .select('customer_code, order_date, created_at, plan_id, items');
             
         if (data) {
             const status = {};
             data.forEach(so => {
                 if (so.customer_code) {
                     status[so.customer_code] = true;
+                }
+                // Also track by plan_id if available (either in column or metadata)
+                if (so.plan_id) {
+                    status[so.plan_id] = true;
+                } else if (so.items) {
+                    // Try to find plan_id in metadata item
+                    const meta = so.items.find(it => it.isMetadata || it._metadata);
+                    const pid = meta?.plan_id || meta?._metadata?.plan_id;
+                    if (pid) status[pid] = true;
                 }
             });
             setHasSO(status);
@@ -217,6 +239,50 @@ export default function SaleWorkPage() {
         }
     }, [history]);
 
+    // --- Persistence: Load Progress from History ---
+    useEffect(() => {
+        if (selectedPlan && history) {
+            // Find an active visit for this plan
+            const activeVisit = history.find(v => v.plan_id === selectedPlan.id && !v.is_completed);
+            if (activeVisit && activeVisit.visit_result) {
+                const res = activeVisit.visit_result;
+                if (res.selectedPurposes) setSelectedPurposes(res.selectedPurposes);
+                if (res.completedTasks) setCompletedTasks(res.completedTasks);
+                if (res.otherComment) setOtherComment(res.otherComment);
+            } else {
+                // Reset if no active visit found
+                setSelectedPurposes([]);
+                setCompletedTasks([]);
+                setOtherComment("");
+            }
+        } else if (!selectedPlan) {
+            setSelectedPurposes([]);
+            setCompletedTasks([]);
+            setOtherComment("");
+        }
+    }, [selectedPlan, history]);
+
+    const updateVisitResult = async (updates) => {
+        if (!selectedPlan || !user) return;
+        
+        // Find active visit
+        const activeVisit = history.find(v => v.plan_id === selectedPlan.id && !v.is_completed);
+        if (!activeVisit) return;
+
+        const currentResult = activeVisit.visit_result || {};
+        const newResult = { ...currentResult, ...updates };
+
+        const { error } = await supabase
+            .from('visits')
+            .update({ visit_result: newResult })
+            .eq('id', activeVisit.id);
+        
+        if (!error) {
+            // Refresh history to keep local state in sync
+            fetchHistory(user.id);
+        }
+    };
+
     const fetchCustomers = async () => {
         try {
             const res = await fetch('/api/customers');
@@ -227,6 +293,7 @@ export default function SaleWorkPage() {
         }
     };
 
+    // AddPlanModal logic is now in components/AddPlanModal.js
     const getLocation = () => {
         setGettingLocation(true);
         if (!navigator.geolocation) {
@@ -351,7 +418,7 @@ export default function SaleWorkPage() {
             const { error: insertError } = await supabase.from('visits').insert([visitData]);
             if (insertError) throw new Error("บันทึกข้อมูลไม่สำเร็จ: " + insertError.message);
 
-            const { error: updateError } = await supabase.from('sales_plans').update({ status: 'completed' }).eq('id', selectedPlan.id);
+            const { error: updateError } = await supabase.from('sales_plans').update({ status: 'in_progress' }).eq('id', selectedPlan.id);
             if (updateError) throw new Error("อัปเดตสถานะงานไม่สำเร็จ: " + updateError.message);
 
             setCheckinRecords(prev => ({
@@ -415,8 +482,9 @@ export default function SaleWorkPage() {
         const grouped = plans.reduce((acc, p) => {
             if (p.status === 'cancelled') return acc;
             
-            // ถ้าเช็คอินแล้ว (มีใน checkinRecords) หรือสถานะเป็น completed ให้ถือว่า DONE และไม่ต้องโชว์ในหน้าแผนงาน
-            const isDone = checkinRecords[p.id] || p.status === 'completed';
+            // เฉพาะสถานะ completed เท่านั้นที่ถือว่าจบงานและหายจากหน้าแผนงาน
+            // ถ้าเป็น in_progress (เช็คอินแล้ว) ยังต้องค้างอยู่ที่นี่จนกว่าจะ Check-out
+            const isDone = p.status === 'completed';
             if (isDone) return acc;
             
             if (!acc[p.plan_date]) acc[p.plan_date] = [];
@@ -475,11 +543,15 @@ export default function SaleWorkPage() {
                                                     onClick={() => setSelectedPlan(plan)}
                                                     className={`snap-start shrink-0 w-[170px] h-[170px] rounded-xl p-5 relative overflow-hidden card-glow active:scale-95 group/card cursor-pointer transition-all duration-500 shadow-md shadow-slate-200/50 group-hover/row:opacity-30 group-hover/row:blur-[3px] group-hover/row:brightness-[0.4] hover:!opacity-100 hover:!blur-none hover:!scale-105 hover:!brightness-100 z-10 hover:z-30 ${isCompleted ? 'bg-slate-300' : `bg-gradient-to-br ${cfg.gradient}`}`}
                                                 >
-                                                    {isCompleted && (
+                                                    {isCompleted ? (
                                                         <div className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-black px-3 py-1 rounded-bl-lg z-20 shadow-sm">
                                                             DONE
                                                         </div>
-                                                    )}
+                                                    ) : plan.status === 'in_progress' ? (
+                                                        <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-bl-lg z-20 shadow-sm animate-pulse">
+                                                            WORK IN
+                                                        </div>
+                                                    ) : null}
                                                     {!isCompleted && <div className="absolute inset-0 bg-gradient-to-br from-[#FF2D55] to-[#E11D48] opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 rounded-xl" />}
                                                     <div className={`absolute -bottom-4 -right-4 opacity-10 text-white scale-[1.5] group-hover/card:scale-[2] transition-all duration-700 ${isCompleted ? 'text-slate-500' : ''}`}>
                                                         {cfg.icon}
@@ -542,6 +614,9 @@ export default function SaleWorkPage() {
     const renderHistory = () => {
         // Group history by date (YYYY-MM-DD)
         const groupedHistory = history.reduce((acc, v) => {
+            // โชว์ในประวัติเฉพาะงานที่ปิด (check-out) แล้วเท่านั้น
+            if (!v.is_completed) return acc;
+
             const d = new Date(v.created_at);
             const dateStr = toLocalDateStr(d);
             if (!acc[dateStr]) acc[dateStr] = [];
@@ -694,6 +769,9 @@ export default function SaleWorkPage() {
                             <div className="flex gap-2.5 px-4 overflow-x-auto scrollbar-hide mb-10 no-wrap">
                                 <button onClick={() => setActiveTab('list')} className={`px-6 py-2.5 rounded-full text-xs font-black transition-all whitespace-nowrap ${activeTab === 'list' ? 'bg-rose-500 text-white shadow-xl shadow-rose-200 scale-105' : 'bg-white text-slate-500 border border-slate-100 shadow-sm'}`}>แผนงาน</button>
                                 <button onClick={() => setActiveTab('history')} className={`px-6 py-2.5 rounded-full text-xs font-black transition-all whitespace-nowrap ${activeTab === 'history' ? 'bg-rose-500 text-white shadow-xl shadow-rose-200 scale-105' : 'bg-white text-slate-500 border border-slate-100 shadow-sm'}`}>ประวัติ</button>
+                                <button onClick={() => setIsAddPlanModalOpen(true)} className="px-6 py-2.5 rounded-full text-xs font-black bg-indigo-50 text-indigo-600 border border-indigo-100 shadow-sm whitespace-nowrap flex items-center gap-2">
+                                    <span className="text-lg leading-none">+</span> เพิ่มแผนงาน
+                                </button>
                                 <button className="px-6 py-2.5 rounded-full text-xs font-black bg-white text-slate-300 border border-slate-50 shadow-sm whitespace-nowrap">ลูกค้าใหม่</button>
                                 <button className="px-6 py-2.5 rounded-full text-xs font-black bg-white text-slate-300 border border-slate-50 shadow-sm whitespace-nowrap">ใบเสนอราคา</button>
                             </div>
@@ -919,19 +997,39 @@ export default function SaleWorkPage() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                                         <p className="text-[9px] font-black text-slate-400 uppercase mb-1">ยอดค้างชำระ</p>
-                                        <p className="text-lg font-black text-rose-500">฿45,200</p>
+                                        <p className="text-lg font-black text-rose-500">-</p>
                                     </div>
                                     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                                         <p className="text-[9px] font-black text-slate-400 uppercase mb-1">วงเงินเครดิต</p>
-                                        <p className="text-lg font-black text-slate-800">฿100,000</p>
+                                        <p className="text-lg font-black text-slate-800">-</p>
                                     </div>
                                 </div>
                                 <div className="bg-white/60 p-5 rounded-2xl border border-dashed border-slate-200">
                                     <div className="flex items-center gap-3 mb-2">
                                         <span className="text-lg">💡</span>
-                                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-wide">โน้ตจากครั้งล่าสุด</p>
+                                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-wide">โน้ต / รายละเอียดแผนงาน</p>
                                     </div>
-                                    <p className="text-xs text-slate-600 font-medium leading-relaxed italic">"ลูกค้าสนใจตัวสินค้าใหม่รุ่น X-Series ฝากเตรียมแคตตาล็อกและตัวอย่างไปให้ดูครั้งหน้าด้วย"</p>
+                                    <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap">
+                                        {(() => {
+                                            if (!selectedPlan.notes) return <span className="text-slate-400 italic">"ไม่มีการบันทึกหมายเหตุ"</span>;
+                                            
+                                            // New format: Split by separator
+                                            if (selectedPlan.notes.includes('---CONTACT_INFO---')) {
+                                                const remarks = selectedPlan.notes.split('---CONTACT_INFO---')[0].trim();
+                                                return remarks || <span className="text-slate-400 italic">"ไม่มีการบันทึกหมายเหตุ"</span>;
+                                            }
+                                            
+                                            // Old format: Try to extract after 'หมายเหตุ: '
+                                            if (selectedPlan.notes.includes('หมายเหตุ: ')) {
+                                                return selectedPlan.notes.split('หมายเหตุ: ')[1];
+                                            }
+                                            
+                                            // Fallback for very old records (just show as is or hide if only contains contact info)
+                                            if (selectedPlan.notes.includes('ผู้ติดต่อ: ')) return <span className="text-slate-400 italic">"ไม่มีการบันทึกหมายเหตุ"</span>;
+                                            
+                                            return selectedPlan.notes;
+                                        })()}
+                                    </p>
                                 </div>
                             </div>
 
@@ -942,9 +1040,9 @@ export default function SaleWorkPage() {
                                         {selectedPlan.reschedule_history.map((hist, idx) => (
                                             <div key={idx} className="flex justify-between items-center text-xs text-slate-600 font-bold px-1 py-2 border-b border-slate-200/60 last:border-0">
                                                 <span className="opacity-60 font-medium text-[10px]">จากวันที่</span>
-                                                <span className="bg-white px-2 py-1 rounded-lg">{new Date(hist.from).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>
+                                                <span className="bg-white px-2 py-1 rounded-lg">{formatDate(hist.from)}</span>
                                                 <span className="text-slate-300">→</span>
-                                                <span className="text-rose-500 bg-rose-50 px-2 py-1 rounded-lg">{new Date(hist.to).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>
+                                                <span className="text-rose-500 bg-rose-50 px-2 py-1 rounded-lg">{formatDate(hist.to)}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -1016,17 +1114,38 @@ export default function SaleWorkPage() {
                                             { id: 'other', label: 'อื่นๆ', icon: '💬' }
                                         ].map(purpose => {
                                             const isSelected = selectedPurposes.includes(purpose.id);
+                                            const isDone = completedTasks.includes(purpose.id);
+                                            
                                             return (
                                                 <button 
                                                     key={purpose.id}
                                                     onClick={() => {
-                                                        if (isSelected) setSelectedPurposes(prev => prev.filter(p => p !== purpose.id));
-                                                        else setSelectedPurposes(prev => [...prev, purpose.id]);
+                                                        // ห้ามติ๊กออกถ้าทำ Task ไปแล้ว
+                                                        if (isDone) {
+                                                            Swal.fire({
+                                                                title: 'ล็อครายการ',
+                                                                text: 'รายการนี้ดำเนินการสำเร็จแล้ว ไม่สามารถยกเลิกได้',
+                                                                icon: 'info',
+                                                                timer: 1500,
+                                                                showConfirmButton: false
+                                                            });
+                                                            return;
+                                                        }
+                                                        
+                                                        let newPurposes;
+                                                        if (isSelected) newPurposes = selectedPurposes.filter(p => p !== purpose.id);
+                                                        else newPurposes = [...selectedPurposes, purpose.id];
+                                                        
+                                                        setSelectedPurposes(newPurposes);
+                                                        updateVisitResult({ selectedPurposes: newPurposes });
                                                     }}
-                                                    className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${isSelected ? 'border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-100 text-indigo-700' : 'border-slate-100 bg-white hover:border-indigo-200 text-slate-500'}`}
+                                                    className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${isSelected ? 'border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-100 text-indigo-700' : 'border-slate-100 bg-white hover:border-indigo-200 text-slate-500'} ${isDone ? 'ring-2 ring-emerald-400 ring-offset-2' : ''}`}
                                                 >
                                                     <span className="text-2xl">{purpose.icon}</span>
-                                                    <span className="font-bold text-[11px] uppercase tracking-wide">{purpose.label}</span>
+                                                    <span className="font-bold text-[11px] uppercase tracking-wide">
+                                                        {purpose.label}
+                                                        {isDone && <span className="ml-1 text-emerald-500">✓</span>}
+                                                    </span>
                                                 </button>
                                             )
                                         })}
@@ -1088,7 +1207,11 @@ export default function SaleWorkPage() {
                                                     <label className="block text-xs font-bold text-slate-700 mb-2">ความคิดเห็น / อื่นๆ</label>
                                                     <textarea 
                                                         value={otherComment}
-                                                        onChange={e => setOtherComment(e.target.value)}
+                                                        onChange={e => {
+                                                            setOtherComment(e.target.value);
+                                                            // We can debounce this or save on blur, but for now let's save when they finish typing or leave
+                                                        }}
+                                                        onBlur={() => updateVisitResult({ otherComment })}
                                                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
                                                         rows="3"
                                                         placeholder="ระบุรายละเอียดเพิ่มเติม..."
@@ -1276,7 +1399,7 @@ export default function SaleWorkPage() {
                                     <label className="aspect-square border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-400 hover:bg-slate-50 hover:border-slate-400 transition-all cursor-pointer">
                                         <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                                         <span className="text-[10px] font-bold uppercase tracking-widest">ถ่ายรูปเพิ่ม</span>
-                                        <input type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={(e) => {
+                                        <input type="file" accept="image/*" capture="user" className="hidden" onChange={(e) => {
                                             const files = Array.from(e.target.files);
                                             files.forEach(f => {
                                                 const reader = new FileReader();
@@ -1374,7 +1497,12 @@ export default function SaleWorkPage() {
                     <div className="bg-white/90 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-slate-100 sticky top-0 z-10 shadow-sm">
                         <h3 className="font-bold text-slate-800">🛍️ สร้างใบสั่งขาย</h3>
                         <div className="flex gap-2">
-                            <button onClick={() => { setCompletedTasks(prev => [...new Set([...prev, 'sales'])]); setActiveModal(null); }} className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold hover:bg-emerald-200 flex items-center gap-1 shadow-sm">
+                            <button onClick={() => { 
+                                const newCompleted = [...new Set([...completedTasks, 'sales'])];
+                                setCompletedTasks(newCompleted);
+                                updateVisitResult({ completedTasks: newCompleted });
+                                setActiveModal(null); 
+                            }} className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold hover:bg-emerald-200 flex items-center gap-1 shadow-sm">
                                 ✅ เสร็จสิ้น
                             </button>
                             <button onClick={() => setActiveModal(null)} className="p-1.5 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200">
@@ -1442,6 +1570,23 @@ export default function SaleWorkPage() {
                                         </button>
                                     </div>
                                 </div>
+                                 {collectionData.method === 'cash' && (
+                                    <div className="pt-2">
+                                        <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-center gap-3">
+                                            <span className="text-xl">🏦</span>
+                                            <div>
+                                                <p className="text-[10px] font-bold text-amber-700 uppercase">กำหนดนำฝากธนาคาร (N+3)</p>
+                                                <p className="text-sm font-black text-amber-900">
+                                                    {(() => {
+                                                        const d = new Date();
+                                                        d.setDate(d.getDate() + 3);
+                                                        return d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+                                                    })()}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 {collectionData.method === 'transfer' && (
                                     <div className="pt-2">
                                         <label className="block text-[10px] font-bold text-slate-500 mb-1">แนบสลิปการโอนเงิน</label>
@@ -1456,7 +1601,16 @@ export default function SaleWorkPage() {
                                 ✅ บันทึกแล้ว
                             </button>
                         ) : (
-                            <button onClick={() => { Swal.fire('Success', 'บันทึกรับชำระเงินเรียบร้อย', 'success'); setCompletedTasks(prev => [...new Set([...prev, 'collection'])]); setActiveModal(null); }} className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-emerald-200 transition-colors active:scale-95">
+                            <button onClick={() => { 
+                                Swal.fire('Success', 'บันทึกรับชำระเงินเรียบร้อย', 'success'); 
+                                const newCompleted = [...new Set([...completedTasks, 'collection'])];
+                                setCompletedTasks(newCompleted); 
+                                updateVisitResult({ 
+                                    completedTasks: newCompleted,
+                                    collectionData: collectionData 
+                                });
+                                setActiveModal(null); 
+                            }} className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-emerald-200 transition-colors active:scale-95">
                                 บันทึกรับชำระ
                             </button>
                         )}
@@ -1499,13 +1653,30 @@ export default function SaleWorkPage() {
                                 ✅ บันทึกแล้ว
                             </button>
                         ) : (
-                            <button onClick={() => { Swal.fire('Success', 'บันทึกผลการตรวจร้านเรียบร้อย', 'success'); setCompletedTasks(prev => [...new Set([...prev, 'inspection'])]); setActiveModal(null); }} className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-blue-200 transition-colors active:scale-95">
+                            <button onClick={() => { 
+                                Swal.fire('Success', 'บันทึกผลการตรวจร้านเรียบร้อย', 'success'); 
+                                const newCompleted = [...new Set([...completedTasks, 'inspection'])];
+                                setCompletedTasks(newCompleted);
+                                updateVisitResult({ 
+                                    completedTasks: newCompleted,
+                                    inspectionData: inspectionData
+                                });
+                                setActiveModal(null); 
+                            }} className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-blue-200 transition-colors active:scale-95">
                                 บันทึกผลตรวจ
                             </button>
                         )}
                     </div>
                 </div>
             )}
+            
+            {/* ─── Add Plan Modal ─── */}
+            <AddPlanModal 
+                isOpen={isAddPlanModalOpen}
+                onClose={() => setIsAddPlanModalOpen(false)}
+                onSave={() => user && fetchPlans(user.id)}
+                userId={user?.id}
+            />
             
             <style jsx global>{`
                 .scrollbar-hide::-webkit-scrollbar { display: none; }

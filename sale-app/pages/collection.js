@@ -7,6 +7,15 @@ import { supabase } from "../lib/supabase";
 
 const MySwal = withReactContent(Swal);
 
+const formatDate = (dateStr) => {
+    if (!dateStr) return "-";
+    const d = new Date(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
 export default function Collection() {
     const router = useRouter();
     const { visitId, custCode, newCustName, custName } = router.query;
@@ -192,7 +201,7 @@ export default function Collection() {
                                         {inv.id}
                                     </div>
                                     <div className="col-span-3 text-sm text-gray-500">
-                                        {new Date(inv.date).toLocaleDateString('th-TH')}
+                                        {formatDate(inv.date)}
                                     </div>
                                     <div className={`col-span-3 text-right font-bold ${inv.selected ? 'text-red-700' : 'text-gray-900'}`}>
                                         {inv.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}

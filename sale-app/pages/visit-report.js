@@ -3,6 +3,15 @@ import Layout from "../components/Layout";
 import Loading from "../components/Loading";
 import { supabase } from "../lib/supabase";
 
+const formatDate = (dateStr) => {
+    if (!dateStr) return "-";
+    const d = new Date(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
 export default function VisitReport() {
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -94,7 +103,11 @@ export default function VisitReport() {
                                             <h3 className="text-lg font-bold text-slate-800 leading-tight">
                                                 {report.customer_name || report.customer_code || "ไม่ระบุชื่อลูกค้า"}
                                             </h3>
-                                            <p className="text-xs text-slate-500 font-mono mt-1">รหัส: {report.customer_code || "-"}</p>
+                                            <div className="flex gap-2 items-center mt-1">
+                                                <p className="text-xs text-slate-500 font-mono">รหัส: {report.customer_code || "-"}</p>
+                                                <span className="text-slate-300">|</span>
+                                                <p className="text-xs text-indigo-600 font-bold">{formatDate(report.check_in_time || report.created_at)}</p>
+                                            </div>
                                         </div>
                                         <div>
                                             {getPurposeBadge(report.purpose)}
