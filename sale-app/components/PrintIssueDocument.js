@@ -149,7 +149,7 @@ export default function PrintIssueDocument({ data }) {
                                 border: `1px solid ${B}`, textAlign: "center",
                                 padding: "10px 8px", verticalAlign: "middle",
                             }}>
-                                <img src="/Logo.jpg" alt="Logo"
+                                <img src="/logo.jpg" alt="Logo"
                                      style={{ width: 62, height: 62, objectFit: "contain", display: "block", margin: "0 auto 6px" }} />
                                 <div style={{ fontWeight: 900, fontSize: "11pt", lineHeight: 1.3 }}>
                                     บริษัท สมุนไพร หนุมาน จำกัด

@@ -381,9 +381,10 @@ export default function CreateSO() {
                 const prodData = await prodRes.json();
                 if (custData.customers) setCustomers(custData.customers);
                 if (prodData.products) {
-                    // Filter only Finish Goods (PROD_TYPE == "1")
-                    const fgProducts = prodData.products.filter(p => p.PROD_TYPE === "1");
-                    setProducts(fgProducts);
+                    // Filter only Finish Goods (PROD_TYPE == "1" or 1)
+                    // If no products match "1", fallback to showing all to prevent empty list
+                    const fgProducts = prodData.products.filter(p => String(p.PROD_TYPE) === "1" || p.PROD_TYPE === 1);
+                    setProducts(fgProducts.length > 0 ? fgProducts : prodData.products);
                 }
 
                 if (orderId || visitId) {
@@ -448,7 +449,7 @@ export default function CreateSO() {
             if (prod) {
                 n[index].price = parseFloat(prod.OUT_PRICE || 0);
                 n[index].unit = prod.UNIT || prod.IN_UNIT || "";
-                n[index].productName = prod.PROD_DES || "";
+                n[index].productName = prod.PROD_DES || prod.PROD_NAME || prod.PROD_NM || "";
             }
         }
         setItems(n);
@@ -791,7 +792,7 @@ export default function CreateSO() {
                                                     onChange={v => handleItemChange(index, "productCode", v)}
                                                     placeholder="-- ค้นหา/เลือกสินค้า --"
                                                     getKey={p => p.PROD_CD || ""}
-                                                    getLabel={p => p.PROD_DES || ""}
+                                                    getLabel={p => p.PROD_DES || p.PROD_NAME || p.PROD_NM || p.PROD_CD || ""}
                                                 />
                                             </div>
 

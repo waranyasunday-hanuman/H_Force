@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabase";
 import { getSessionKey, getProducts } from "../../lib/ecount";
 
@@ -163,13 +164,28 @@ export default async function handler(req, res) {
             .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
             .slice(0, 15);
 
-        // --- Fetch All Staff for Manager Dropdown ---
-        const { data: profiles } = await supabase
-            .from('profiles')
-            .select('email, full_name, role')
-            .in('role', ['sale', 'manager']);
+        // --- Fetch All Staff for Manager Dropdown (Using Admin to get emails) ---
+        const supabaseAdmin = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
 
-        const allStaff = profiles || [];
+        const { data: authData } = await supabaseAdmin.auth.admin.listUsers();
+        const { data: profiles } = await supabaseAdmin
+            .from('profiles')
+            .select('id, display_name, pic_name, role');
+
+        const profileMap = {};
+        (profiles || []).forEach(p => { profileMap[p.id] = p; });
+
+        const allStaff = (authData?.users || [])
+            .filter(u => profileMap[u.id]?.role === 'sale' || profileMap[u.id]?.role === 'manager')
+            .map(u => ({
+                id: u.id,
+                email: u.email,
+                full_name: profileMap[u.id]?.display_name || profileMap[u.id]?.pic_name || u.email.split('@')[0],
+                role: profileMap[u.id]?.role
+            }));
 
         // --- Return Data ---
         res.status(200).json({ 
@@ -197,6 +213,10 @@ export default async function handler(req, res) {
         
     } catch (error) {
         console.error("API Error dashboard:", error);
-        res.status(500).json({ error: "Cannot fetch dashboard data" });
+        res.status(500).json({ 
+            error: "Cannot fetch dashboard data", 
+            details: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 }

@@ -100,7 +100,7 @@ export default function MenuPage() {
             {/* Sticky Header with Live Clock */}
             <div className="sticky top-0 z-50 bg-slate-50/80 backdrop-blur-xl -mx-4 px-4 py-3 mb-6 border-b border-slate-200/50 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-3">
-                    <img src="/Logo.jpg" alt="Logo" className="w-10 h-10 object-contain rounded-xl border border-slate-100 bg-white p-0.5 shadow-sm"/>
+                    <img src="/logo.jpg" alt="Logo" className="w-10 h-10 object-contain rounded-xl border border-slate-100 bg-white p-0.5 shadow-sm"/>
                     <div>
                         <h2 className="text-xl font-black text-slate-900 tracking-tighter leading-tight">เมนูใช้งาน</h2>
                         <div className="flex items-center gap-2 mt-0.5">

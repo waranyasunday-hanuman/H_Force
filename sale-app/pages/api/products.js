@@ -16,30 +16,39 @@ export default async function handler(req, res) {
             .from("products")
             .select("*");
 
-        // If table exists and has data, return it
         if (!dbError && dbProducts && dbProducts.length > 0) {
-            // Map keys back to match Ecount format so frontend doesn't break
             const mappedProducts = dbProducts.map(p => ({
                 PROD_CD: p.prod_cd,
-                PROD_DES: p.prod_des,
-                PROD_TYPE: p.prod_type,
-                UNIT: p.unit,
-                BAR_CODE: p.bar_code,
-                OUT_PRICE: p.out_price,
-                IN_PRICE: p.in_price,
-                REMARKS: p.remarks
+                PROD_DES: p.prod_des || "",
+                PROD_TYPE: String(p.prod_type || ""),
+                UNIT: p.unit || "",
+                BAR_CODE: p.bar_code || "",
+                OUT_PRICE: parseFloat(p.out_price || 0),
+                IN_PRICE: parseFloat(p.in_price || 0),
+                REMARKS: p.remarks || ""
             }));
             return res.status(200).json({ products: mappedProducts, source: 'supabase' });
         }
 
-        // 2. Fallback to Ecount if Supabase table is empty or missing
-        console.log("Supabase products not found or table missing. Falling back to Ecount API...");
+        // 2. Fallback to Ecount
+        console.log("Supabase products not found. Falling back to Ecount API...");
         const auth = await getSessionKey();
-        const allProducts = await getProducts(auth.sessionKey, auth.hostUrl);
+        const ecountProducts = await getProducts(auth.sessionKey, auth.hostUrl);
 
-        res.status(200).json({ products: allProducts || [], source: 'ecount' });
+        const mappedEcount = (ecountProducts || []).map(p => ({
+            PROD_CD: p.PROD_CD || p.PROD_CODE || "",
+            PROD_DES: p.PROD_DES || p.PROD_NAME || p.PROD_NM || "",
+            PROD_TYPE: String(p.PROD_TYPE || p.GOODS_GUBUN || ""),
+            UNIT: p.UNIT || p.IN_UNIT || "",
+            BAR_CODE: p.BAR_CODE || "",
+            OUT_PRICE: parseFloat(p.OUT_PRICE || 0),
+            IN_PRICE: parseFloat(p.IN_PRICE || 0),
+            REMARKS: p.REMARKS || ""
+        }));
+
+        res.status(200).json({ products: mappedEcount, source: 'ecount' });
     } catch (error) {
         console.error("API Error products:", error);
-        res.status(500).json({ error: "Cannot fetch products" });
+        res.status(500).json({ error: "Cannot fetch products: " + error.message });
     }
 }
