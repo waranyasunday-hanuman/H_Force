@@ -1,5 +1,5 @@
 import { supabase } from "../../lib/supabase";
-import { getSessionKey, getInventory } from "../../lib/ecount";
+import { getSessionKey, getInventoryBalance } from "../../lib/ecount";
 
 export default async function handler(req, res) {
     if (req.method !== "GET") {
@@ -24,14 +24,13 @@ export default async function handler(req, res) {
         const auth = await getSessionKey();
         
         // 3. Fetch inventory for each warehouse
-        // We do this in parallel to be fast, but Ecount might have rate limits, so we'll be careful.
         const teamStock = await Promise.all(staff.map(async (member) => {
             try {
-                const invData = await getInventory(auth.sessionKey, auth.hostUrl, member.warehouse_code);
-                const items = invData.inventory || [];
+                // Use getInventoryBalance instead of getInventory
+                const items = await getInventoryBalance(auth.sessionKey, auth.hostUrl, null, member.warehouse_code);
                 
-                const totalQty = items.reduce((sum, item) => sum + parseFloat(item.QTY || 0), 0);
-                const totalItems = items.filter(i => parseFloat(i.QTY) > 0).length;
+                const totalQty = items.reduce((sum, item) => sum + parseFloat(item.BAL_QTY || item.QTY || 0), 0);
+                const totalItems = items.filter(i => parseFloat(i.BAL_QTY || i.QTY) > 0).length;
 
                 return {
                     email: member.email,
@@ -39,7 +38,7 @@ export default async function handler(req, res) {
                     warehouseCode: member.warehouse_code,
                     totalQty,
                     totalItems,
-                    items: items.filter(i => parseFloat(i.QTY) > 0) // Only items with stock
+                    items: items.filter(i => parseFloat(i.BAL_QTY || i.QTY) > 0)
                 };
             } catch (err) {
                 console.error(`Error fetching stock for ${member.warehouse_code}:`, err);
