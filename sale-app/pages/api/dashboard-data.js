@@ -60,13 +60,17 @@ export default async function handler(req, res) {
         if (visitError) throw visitError;
 
 
-        // --- Process Products ---
-        const auth = await getSessionKey();
-        const products = await getProducts(auth.sessionKey, auth.hostUrl).catch(() => []);
+        // --- Process Products (from Ecount — optional, won't crash if unavailable) ---
         const productMap = {};
-        products.forEach(p => {
-            productMap[p.PROD_CD] = p.PROD_DES;
-        });
+        try {
+            const auth = await getSessionKey();
+            const products = await getProducts(auth.sessionKey, auth.hostUrl).catch(() => []);
+            products.forEach(p => {
+                productMap[p.PROD_CD] = p.PROD_DES || p.PROD_NAME || p.PROD_NM || p.PROD_CD;
+            });
+        } catch (ecountErr) {
+            console.warn("[dashboard-data] Ecount unavailable, skipping product name lookup:", ecountErr.message);
+        }
 
         // --- Aggregations ---
         let totalAmount = 0;

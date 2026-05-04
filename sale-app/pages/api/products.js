@@ -30,23 +30,29 @@ export default async function handler(req, res) {
             return res.status(200).json({ products: mappedProducts, source: 'supabase' });
         }
 
-        // 2. Fallback to Ecount
+        // 2. Fallback to Ecount (optional — returns empty list if Ecount is unavailable)
         console.log("Supabase products not found. Falling back to Ecount API...");
-        const auth = await getSessionKey();
-        const ecountProducts = await getProducts(auth.sessionKey, auth.hostUrl);
+        try {
+            const auth = await getSessionKey();
+            const ecountProducts = await getProducts(auth.sessionKey, auth.hostUrl);
 
-        const mappedEcount = (ecountProducts || []).map(p => ({
-            PROD_CD: p.PROD_CD || p.PROD_CODE || "",
-            PROD_DES: p.PROD_DES || p.PROD_NAME || p.PROD_NM || "",
-            PROD_TYPE: String(p.PROD_TYPE || p.GOODS_GUBUN || ""),
-            UNIT: p.UNIT || p.IN_UNIT || "",
-            BAR_CODE: p.BAR_CODE || "",
-            OUT_PRICE: parseFloat(p.OUT_PRICE || 0),
-            IN_PRICE: parseFloat(p.IN_PRICE || 0),
-            REMARKS: p.REMARKS || ""
-        }));
+            const mappedEcount = (ecountProducts || []).map(p => ({
+                PROD_CD: p.PROD_CD || p.PROD_CODE || "",
+                PROD_DES: p.PROD_DES || p.PROD_NAME || p.PROD_NM || "",
+                PROD_TYPE: String(p.PROD_TYPE || p.GOODS_GUBUN || ""),
+                UNIT: p.UNIT || p.IN_UNIT || "",
+                BAR_CODE: p.BAR_CODE || "",
+                OUT_PRICE: parseFloat(p.OUT_PRICE || 0),
+                IN_PRICE: parseFloat(p.IN_PRICE || 0),
+                REMARKS: p.REMARKS || ""
+            }));
 
-        res.status(200).json({ products: mappedEcount, source: 'ecount' });
+            return res.status(200).json({ products: mappedEcount, source: 'ecount' });
+        } catch (ecountErr) {
+            console.warn("[products] Ecount unavailable:", ecountErr.message);
+            return res.status(200).json({ products: [], source: 'none', warning: "Ecount unavailable. Please sync products first." });
+        }
+
     } catch (error) {
         console.error("API Error products:", error);
         res.status(500).json({ error: "Cannot fetch products: " + error.message });
