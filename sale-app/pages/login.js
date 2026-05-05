@@ -128,6 +128,19 @@ export default function LoginPage() {
                                 </div>
                             ) : "เข้าสู่ระบบ"}
                         </button>
+
+                        <div className="relative py-2">
+                            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+                            <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-gray-400">หรือติดตั้งแอป</span></div>
+                        </div>
+
+                        <a
+                            href="/h-force.apk"
+                            className="w-full py-3 rounded-xl bg-slate-50 text-slate-700 font-bold text-sm border border-slate-200 flex items-center justify-center gap-2 hover:bg-slate-100 transition-all shadow-sm"
+                        >
+                            <span>🤖</span>
+                            ดาวน์โหลดแอป Android (APK)
+                        </a>
                     </form>
                 </div>
                 
