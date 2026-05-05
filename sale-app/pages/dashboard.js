@@ -36,6 +36,7 @@ export default function Dashboard() {
     const [loadingDebt, setLoadingDebt] = useState(false);
     const [syncingInvoices, setSyncingInvoices] = useState(false);
     const [selectedPayInvoice, setSelectedPayInvoice] = useState(null);
+    const [selectedPrintInvoice, setSelectedPrintInvoice] = useState(null);
     const [slipFile, setSlipFile] = useState(null);
     const [uploadingSlip, setUploadingSlip] = useState(false);
     const [selectedInvoices, setSelectedInvoices] = useState([]);
@@ -120,6 +121,13 @@ export default function Dashboard() {
             alert(`Error: ${err.message}`);
             setSyncingInvoices(false);
         }
+    };
+
+    const handlePrintPOS = (inv) => {
+        setSelectedPrintInvoice(inv);
+        setTimeout(() => {
+            window.print();
+        }, 300);
     };
 
     const handlePaymentSubmit = async () => {
@@ -817,13 +825,21 @@ export default function Dashboard() {
                                                     <div className="text-[10px] text-slate-400 font-medium uppercase mt-0.5">PIC: {inv.pic_name || inv.pic_code || '-'}</div>
                                                 </td>
                                                 <td className="py-4 text-right font-black text-slate-900">{formatCurrency(inv.outstanding_amount)}</td>
-                                                <td className="py-4 text-center">
-                                                    <button 
-                                                        onClick={() => setSelectedPayInvoice(inv)}
-                                                        className="px-4 py-1.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-black hover:bg-blue-600 hover:text-white transition-all shadow-sm"
-                                                    >
-                                                        ชำระเงิน
-                                                    </button>
+                                                 <td className="py-4 text-center">
+                                                    <div className="flex gap-2 justify-center">
+                                                        <button 
+                                                            onClick={() => setSelectedPayInvoice(inv)}
+                                                            className="px-4 py-1.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-black hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                                        >
+                                                            ชำระเงิน
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handlePrintPOS(inv)}
+                                                            className="px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black hover:bg-slate-900 hover:text-white transition-all shadow-sm"
+                                                        >
+                                                            พิมพ์ (POS)
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -916,7 +932,120 @@ export default function Dashboard() {
                 .glass-card:hover::before {
                     opacity: 1;
                 }
+
+                @media print {
+                    @page {
+                        margin: 0;
+                        size: 80mm auto;
+                    }
+                    body * {
+                        visibility: hidden;
+                    }
+                    #pos-receipt, #pos-receipt * {
+                        visibility: visible;
+                    }
+                    #pos-receipt {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 80mm;
+                        padding: 0;
+                        margin: 0;
+                        background: white;
+                        color: black !important;
+                    }
+                    nav, footer, button, .no-print {
+                        display: none !important;
+                    }
+                }
+
+                .receipt-container {
+                    font-family: 'Inter', 'Prompt', sans-serif;
+                    padding: 5mm;
+                    width: 80mm;
+                    box-sizing: border-box;
+                }
+                .receipt-header {
+                    text-align: center;
+                    margin-bottom: 5mm;
+                }
+                .receipt-divider {
+                    border-top: 1px dashed #000;
+                    margin: 3mm 0;
+                }
+                .receipt-row {
+                    display: flex;
+                    justify-content: space-between;
+                    font-size: 12px;
+                    margin-bottom: 1mm;
+                }
+                .receipt-total {
+                    font-size: 18px;
+                    font-weight: bold;
+                    display: flex;
+                    justify-content: space-between;
+                    margin-top: 2mm;
+                }
             `}</style>
+
+            {/* POS Receipt (Hidden except during print) */}
+            <div id="pos-receipt" className="hidden print:block">
+                {selectedPrintInvoice && (
+                    <div className="receipt-container">
+                        <div className="receipt-header">
+                            <h2 className="text-xl font-black m-0">H FORCE</h2>
+                            <p className="text-[10px] m-0">ใบกำกับภาษีอย่างย่อ / ใบรับเงิน</p>
+                            <p className="text-[10px] m-0">(SIMPLIFIED TAX INVOICE)</p>
+                        </div>
+                        
+                        <div className="receipt-divider"></div>
+                        
+                        <div className="receipt-row">
+                            <span>เลขที่ใบขาย:</span>
+                            <span className="font-bold">{selectedPrintInvoice.invoice_no}</span>
+                        </div>
+                        <div className="receipt-row">
+                            <span>วันที่:</span>
+                            <span>{formatDate(selectedPrintInvoice.invoice_date)}</span>
+                        </div>
+                        <div className="receipt-row">
+                            <span>ลูกค้า:</span>
+                            <span>{selectedPrintInvoice.customer_name}</span>
+                        </div>
+                        <div className="receipt-row">
+                            <span>PIC:</span>
+                            <span>{selectedPrintInvoice.pic_name || '-'}</span>
+                        </div>
+                        
+                        <div className="receipt-divider"></div>
+                        
+                        <div className="receipt-row font-bold">
+                            <span>รายการสินค้า</span>
+                            <span>ยอดรวม</span>
+                        </div>
+                        
+                        <div className="receipt-row py-2">
+                            <span>สินค้ารวมตามรายการ</span>
+                            <span>{formatCurrency(selectedPrintInvoice.total_amount)}</span>
+                        </div>
+                        
+                        <div className="receipt-divider"></div>
+                        
+                        <div className="receipt-total">
+                            <span>ยอดรวมทั้งสิ้น:</span>
+                            <span>{formatCurrency(selectedPrintInvoice.total_amount)}</span>
+                        </div>
+                        
+                        <div className="receipt-divider"></div>
+                        
+                        <div className="text-center text-[10px] mt-4">
+                            <p className="m-0">ราคารวมภาษีมูลค่าเพิ่มแล้ว</p>
+                            <p className="m-1 font-bold">*** ขอบคุณที่ใช้บริการ ***</p>
+                            <p className="mt-4 opacity-50">Powered by H Force Sales System</p>
+                        </div>
+                    </div>
+                )}
+            </div>
         </Layout>
     );
 }
