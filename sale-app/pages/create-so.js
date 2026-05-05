@@ -198,6 +198,78 @@ function printSO({ order, customer, items, paymentType, dueDate, userEmail, date
     win.document.close();
 }
 
+function printPOSReceipt({ order, customer, items, paymentType, userEmail, date, discount, deposit }) {
+    const subTotal = items.reduce((s, it) => s + it.price * it.quantity, 0);
+    const discAmt = parseFloat(discount) || 0;
+    const totalAmount = subTotal - discAmt;
+    
+    const fmtCurr = (v) => new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
+    const now = new Date();
+    const printDate = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear() + 543} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+    const win = window.open("", "_blank", "width=302,height=600");
+    win.document.write(`
+        <html>
+        <head>
+            <meta charset="utf-8"/>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@400;700&display=swap');
+                body { font-family: 'Prompt', sans-serif; width: 80mm; margin: 0; padding: 4mm; font-size: 11px; color: black; }
+                .text-center { text-align: center; }
+                .text-right { text-align: right; }
+                .font-bold { font-weight: bold; }
+                .divider { border-top: 1px dashed black; margin: 2mm 0; }
+                table { width: 100%; border-collapse: collapse; }
+                .header { margin-bottom: 4mm; }
+                p { margin: 1mm 0; }
+            </style>
+        </head>
+        <body onload="window.print(); setTimeout(() => window.close(), 500);">
+            <div class="header text-center">
+                <h2 style="margin:0; font-size: 18px;">H FORCE</h2>
+                <div style="font-size:10px">ใบกำกับภาษีอย่างย่อ</div>
+                <div style="font-size:10px">(SIMPLIFIED TAX INVOICE)</div>
+            </div>
+            <div class="divider"></div>
+            <p><strong>No:</strong> ${order?.soNumber || order?.orderId || '-'}</p>
+            <p><strong>Date:</strong> ${printDate}</p>
+            <p><strong>Cust:</strong> ${customer?.name || '-'}</p>
+            <div class="divider"></div>
+            <table>
+                <thead>
+                    <tr class="font-bold">
+                        <th align="left">รายการ</th>
+                        <th align="right">รวม</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${items.map(it => `
+                        <tr>
+                            <td colspan="2" style="padding-top: 2mm">${it.productName}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding-left: 2mm; color: #333;">${it.quantity} x ${fmtCurr(it.price)}</td>
+                            <td align="right">${fmtCurr(it.price * it.quantity)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            <div class="divider"></div>
+            <div class="font-bold" style="display:flex; justify-content:space-between; font-size: 14px;">
+                <span>ยอดรวมทั้งสิ้น:</span>
+                <span>${fmtCurr(totalAmount)}</span>
+            </div>
+            <div class="divider"></div>
+            <div class="text-center" style="margin-top:5mm">
+                <p>*** ขอบคุณที่ใช้บริการ ***</p>
+                <p style="font-size:9px; opacity: 0.7;">พนักงาน: ${userEmail}</p>
+            </div>
+        </body>
+        </html>
+    `);
+    win.document.close();
+}
+
 // ─── Searchable Combobox ────────────────────────────────────────────────────
 function SearchableSelect({ options, value, onChange, placeholder, getKey, getLabel }) {
     const [search, setSearch] = useState("");
@@ -705,6 +777,11 @@ export default function CreateSO() {
                                         className="w-full sm:w-auto px-10 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-base transition-all shadow-xl shadow-indigo-200 flex items-center justify-center gap-2 transform active:scale-95">
                                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                                         พิมพ์ใบกำกับภาษีอย่างย่อ
+                                    </button>
+                                    <button type="button" onClick={() => printPOSReceipt(savedOrderData)}
+                                        className="w-full sm:w-auto px-10 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base transition-all shadow-xl shadow-emerald-200 flex items-center justify-center gap-2 transform active:scale-95">
+                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                        พิมพ์สลิป (POS 80mm)
                                     </button>
                                     <button type="button" onClick={() => {
                                         setSavedOrderData(null);
