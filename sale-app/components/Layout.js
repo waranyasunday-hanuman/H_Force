@@ -26,6 +26,11 @@ export default function Layout({ children }) {
                 setRole(profile?.role || "sale");
                 setDisplayName(profile?.display_name || session.user.email || "");
                 setWarehouseCode(profile?.warehouse_code || "");
+            } else {
+                // If no session and not on a public path, redirect to login
+                if (!HIDE_PATHS.some(p => router.pathname.startsWith(p))) {
+                    router.push("/login");
+                }
             }
         }
         fetchUser();
