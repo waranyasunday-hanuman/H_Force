@@ -19,6 +19,11 @@ function printSO({ order, customer, items, paymentType, dueDate, userEmail, date
     const printDate = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear() + 543}`;
     const soDate = date ? `${date.slice(6, 8)}/${date.slice(4, 6)}/${parseInt(date.slice(0, 4)) + 543}` : printDate;
 
+    if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
+        window.AndroidPrint.print();
+        return;
+    }
+
     // Use a hidden iframe for printing to bypass pop-up blockers in Capacitor/Android
     let iframe = document.getElementById('print-iframe');
     if (!iframe) {

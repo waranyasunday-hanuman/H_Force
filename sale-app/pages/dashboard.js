@@ -126,6 +126,12 @@ export default function Dashboard() {
     const handlePrintPOS = (inv) => {
         setSelectedPrintInvoice(inv);
         setTimeout(() => {
+            // Check if we are running in the Android App with the Print Interface
+            if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
+                window.AndroidPrint.print();
+                return;
+            }
+
             let iframe = document.getElementById('print-pos-iframe');
             if (!iframe) {
                 iframe = document.createElement('iframe');
