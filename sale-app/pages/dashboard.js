@@ -5,15 +5,16 @@ import { supabase } from "../lib/supabase";
 import dynamic from 'next/dynamic';
 import DashboardCalendar from "../components/DashboardCalendar";
 
-const DashboardMap = dynamic(() => import('../components/DashboardMap'), {
-    ssr: false,
-    loading: () => <div className="h-full w-full bg-slate-100/50 backdrop-blur-md animate-pulse rounded-[2.5rem] flex items-center justify-center text-slate-400 min-h-[400px]">กำลังโหลดข้อมูลพื้นที่...</div>
-});
+// Map removed as requested
 
 const formatDate = (dateStr) => {
     if (!dateStr) return "-";
     const d = new Date(dateStr);
     return d.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+const formatThaiMonth = (date) => {
+    return new Date(date).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
 };
 
 export default function Dashboard() {
@@ -30,6 +31,31 @@ export default function Dashboard() {
     const [teamStock, setTeamStock] = useState([]);
     const [loadingStock, setLoadingStock] = useState(false);
     const [showStockDetail, setShowStockDetail] = useState(null);
+    const [showDebtModal, setShowDebtModal] = useState(null);
+    const [debtInvoices, setDebtInvoices] = useState([]);
+    const [loadingDebt, setLoadingDebt] = useState(false);
+    const [syncingInvoices, setSyncingInvoices] = useState(false);
+    const [selectedPayInvoice, setSelectedPayInvoice] = useState(null);
+    const [slipFile, setSlipFile] = useState(null);
+    const [uploadingSlip, setUploadingSlip] = useState(false);
+    const [selectedInvoices, setSelectedInvoices] = useState([]);
+
+    const fetchData = async () => {
+        if (!userEmail || !role) return;
+        setLoading(true);
+        try {
+            const filterEmail = role === 'sale' ? userEmail : selectedUser;
+            let url = `/api/dashboard-data?dateType=${dateType}`;
+            if (filterEmail) url += `&user=${encodeURIComponent(filterEmail)}`;
+            if (dateType === 'custom') url += `&startDate=${startDate}&endDate=${endDate}`;
+            const res = await fetch(url);
+            const json = await res.json();
+            if (res.ok) setData(json);
+        } catch (err) {
+            console.error("Dashboard error:", err);
+        }
+        setLoading(false);
+    };
 
     useEffect(() => {
         const fetchUserAndRole = async () => {
@@ -66,25 +92,102 @@ export default function Dashboard() {
         }
     }, [role]);
 
-    useEffect(() => {
-        if (!userEmail || !role) return;
-        async function fetchDashboard() {
-            setLoading(true);
-            try {
-                const filterEmail = role === 'sale' ? userEmail : selectedUser;
-                let url = `/api/dashboard-data?dateType=${dateType}`;
-                if (filterEmail) url += `&user=${encodeURIComponent(filterEmail)}`;
-                if (dateType === 'custom') url += `&startDate=${startDate}&endDate=${endDate}`;
-                const res = await fetch(url);
-                const json = await res.json();
-                if (res.ok) setData(json);
-            } catch (err) {
-                console.error("Dashboard error:", err);
-            }
-            setLoading(false);
+    const handleFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setSyncingInvoices(true);
+        try {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const base64 = event.target.result.split(',')[1];
+                const res = await fetch("/api/upload-invoices", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fileData: base64 })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert(`อัปโหลดสำเร็จ! นำเข้าข้อมูล ${result.count} รายการ`);
+                    fetchData();
+                } else {
+                    alert(`เกิดข้อผิดพลาด: ${result.error}`);
+                }
+                setSyncingInvoices(false);
+            };
+            reader.readAsDataURL(file);
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+            setSyncingInvoices(false);
         }
-        fetchDashboard();
+    };
+
+    const handlePaymentSubmit = async () => {
+        if (!selectedPayInvoice || !slipFile) {
+            alert("กรุณาอัปโหลดหลักฐานการโอนเงิน (Slip)");
+            return;
+        }
+
+        setUploadingSlip(true);
+        try {
+            const fileExt = slipFile.name.split('.').pop();
+            const fileName = `${selectedPayInvoice.invoice_no}_${Date.now()}.${fileExt}`;
+            const { error: uploadError } = await supabase.storage
+                .from('slips')
+                .upload(fileName, slipFile);
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage.from('slips').getPublicUrl(fileName);
+
+            const res = await fetch("/api/receivables", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    invoice_nos: [selectedPayInvoice.invoice_no], 
+                    status: 'paid',
+                    slip_url: publicUrl 
+                })
+            });
+            const result = await res.json();
+            
+            if (result.success) {
+                alert("บันทึกการชำระเงินสำเร็จ");
+                setSelectedPayInvoice(null);
+                setSlipFile(null);
+                fetchDebtDetail(showDebtModal);
+                fetchData();
+            }
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        } finally {
+            setUploadingSlip(false);
+        }
+    };
+
+    const fetchDebtDetail = async (range) => {
+        setLoadingDebt(true);
+        setShowDebtModal(range);
+        try {
+            const params = new URLSearchParams({ 
+                range, 
+                pic_code: role === 'sale' ? userEmail : selectedUser 
+            });
+            const res = await fetch(`/api/receivables?${params}`);
+            const result = await res.json();
+            setDebtInvoices(result);
+            setSelectedInvoices([]);
+        } catch (err) {
+            console.error("Fetch debt detail error:", err);
+        } finally {
+            setLoadingDebt(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchData();
     }, [dateType, startDate, endDate, userEmail, role, selectedUser]);
+
 
     const formatCurrency = (val) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', maximumFractionDigits: 0 }).format(val || 0);
 
@@ -99,12 +202,21 @@ export default function Dashboard() {
                 <div className="max-w-7xl mx-auto pt-8 mb-12">
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                         <div className="animate-slide-up">
-                            <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight">
-                                {role === 'sale' ? 'Personal' : 'Team'} <span className="text-blue-600">Insights</span>
+                            <div className="flex items-center gap-3 mb-2">
+                                <span className="px-3 py-1 bg-blue-500/10 text-blue-600 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-blue-500/20 backdrop-blur-md">
+                                    {dateType === 'daily' ? 'รายวัน' : dateType === 'monthly' ? 'รายเดือน' : 'กำหนดเอง'}
+                                </span>
+                                <span className="text-slate-300">/</span>
+                                <span className="text-slate-900 font-bold text-sm">
+                                    {dateType === 'daily' ? formatDate(new Date()) : dateType === 'monthly' ? formatThaiMonth(new Date()) : `${formatDate(startDate)} - ${formatDate(endDate)}`}
+                                </span>
+                            </div>
+                            <h1 className="text-5xl md:text-6xl font-black text-slate-900 tracking-tight leading-tight">
+                                แดชบอร์ด <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">การขาย</span>
                             </h1>
                             <p className="text-slate-400 font-medium text-lg mt-2 flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                วิเคราะห์ประสิทธิภาพและเป้าหมายเชิงลึก
+                                วิเคราะห์ประสิทธิภาพและเป้าหมายเชิงลึกประจำชุดข้อมูลนี้
                             </p>
                         </div>
 
@@ -122,12 +234,12 @@ export default function Dashboard() {
                                 </select>
                             )}
 
-                            <div className="flex bg-slate-100/80 p-1 rounded-2xl">
+                            <div className="flex bg-slate-200/50 backdrop-blur-md p-1.5 rounded-[1.5rem] border border-white/50 shadow-inner">
                                 {['daily', 'monthly', 'custom'].map((type) => (
                                     <button 
                                         key={type}
                                         onClick={() => setDateType(type)} 
-                                        className={`px-6 py-2.5 rounded-xl font-bold text-xs transition-all ${dateType === type ? "bg-white text-blue-600 shadow-md scale-105" : "text-slate-400 hover:text-slate-600"}`}
+                                        className={`px-8 py-2.5 rounded-2xl font-black text-[11px] uppercase tracking-wider transition-all duration-500 ${dateType === type ? "bg-white text-blue-600 shadow-xl shadow-blue-500/10 scale-105" : "text-slate-500 hover:text-slate-800"}`}
                                     >
                                         {type === 'daily' ? 'รายวัน' : type === 'monthly' ? 'รายเดือน' : 'กำหนดเอง'}
                                     </button>
@@ -140,58 +252,111 @@ export default function Dashboard() {
                 <div className="max-w-7xl mx-auto space-y-10">
                     
                     {/* KPI 3D Section */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                        {/* Main Sales Card - Ultra 3D */}
-                        <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 rounded-[2.5rem] p-8 shadow-2xl shadow-blue-300 relative overflow-hidden group hover:-translate-y-2 transition-all duration-500">
-                            <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-3xl"></div>
-                            <div className="relative z-10">
-                                <p className="text-blue-100 font-bold text-sm uppercase tracking-widest mb-2 opacity-80">ยอดขายรวม</p>
-                                <h3 className="text-4xl font-black text-white mb-4">{formatCurrency(data.totalAmount)}</h3>
-                                <div className="flex items-center gap-2 text-xs font-bold bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full text-white w-fit">
-                                    <span>↑ 12% vs last month</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
+                        {/* Revenue Card - Inspired by the Vibrant Apple Intelligence Card */}
+                        <div className="group cursor-pointer">
+                            <div className="relative h-80 rounded-[3.5rem] bg-gradient-to-br from-[#1d1d1f] to-[#434344] overflow-hidden shadow-2xl transition-all duration-700 hover:scale-[1.02] hover:shadow-blue-500/10">
+                                <div className="absolute inset-0 bg-gradient-to-tr from-blue-600/20 via-transparent to-indigo-500/20 opacity-60"></div>
+                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-blue-500/30 rounded-full blur-[80px] group-hover:bg-blue-400/40 transition-all duration-700"></div>
+                                
+                                <div className="relative z-10 h-full flex flex-col items-center justify-between p-8">
+                                    <div className="text-center">
+                                        <div className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] mb-1">ยอดขายทั้งหมด</div>
+                                        <div className="text-3xl font-black text-white tracking-tight">{formatCurrency(data.totalAmount)}</div>
+                                    </div>
+                                    
+                                    {/* Central Visual */}
+                                    <div className="text-7xl group-hover:scale-110 transition-transform duration-700">💰</div>
+
+                                    {/* Pill UI element from the image */}
+                                    <div className="w-full bg-white/10 backdrop-blur-2xl rounded-3xl p-1.5 flex gap-1 border border-white/10 shadow-lg">
+                                        <div className="flex-1 py-2 rounded-2xl bg-white/10 text-white text-[10px] font-black text-center uppercase tracking-widest">เติบโต</div>
+                                        <div className="flex-1 py-2 rounded-2xl bg-blue-600 text-white text-[10px] font-black text-center uppercase tracking-widest">+12%</div>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="absolute right-6 bottom-6 text-6xl opacity-20 group-hover:scale-125 transition-transform duration-700">💰</div>
+                            <div className="mt-4 px-2">
+                                <h4 className="text-sm font-black text-slate-900">ยอดขายรวมรายเดือน</h4>
+                                <p className="text-xs text-slate-400 font-medium leading-relaxed">วิเคราะห์ผลประกอบการจากทุกช่องทางแบบ Real-time</p>
+                            </div>
                         </div>
 
-                        {/* Visit Card */}
-                        <div className="bg-white rounded-[2.5rem] p-8 shadow-xl shadow-slate-200 border border-white relative overflow-hidden group hover:-translate-y-2 transition-all duration-500">
-                            <div className="relative z-10">
-                                <p className="text-slate-400 font-bold text-sm uppercase tracking-widest mb-2">Check-in</p>
-                                <h3 className="text-4xl font-black text-slate-900 mb-4">{data.checkInCount} <span className="text-lg text-slate-400">ครั้ง</span></h3>
-                                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-emerald-500 w-[75%] rounded-full shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                        {/* Visits Card - Clean White Style */}
+                        <div className="group cursor-pointer">
+                            <div className="relative h-80 rounded-[3.5rem] bg-[#F5F5F7] overflow-hidden shadow-xl transition-all duration-700 hover:scale-[1.02]">
+                                <div className="relative z-10 h-full flex flex-col items-center justify-between p-8">
+                                    <div className="text-center">
+                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">การเข้าพบลูกค้า</div>
+                                        <div className="text-4xl font-black text-slate-900 tracking-tight">{data.checkInCount}</div>
+                                    </div>
+
+                                    {/* Message Bubble Visual from the image */}
+                                    <div className="w-40 h-24 bg-blue-500 rounded-[2rem] flex items-center justify-center p-4 relative shadow-lg shadow-blue-500/20 group-hover:rotate-3 transition-transform duration-700">
+                                        <div className="text-white text-xs font-bold text-center leading-tight">พนักงานขายได้มีการเข้าพบลูกค้าในช่วงเวลาที่เลือก</div>
+                                        <div className="absolute -bottom-2 right-6 w-6 h-6 bg-blue-500 rotate-45"></div>
+                                    </div>
+
+                                    <div className="w-full bg-slate-200/50 backdrop-blur-md rounded-3xl p-1.5 flex gap-1 border border-white/50">
+                                        <div className="flex-1 py-2 rounded-2xl bg-white text-slate-900 text-[10px] font-black text-center uppercase tracking-widest">เป้าหมาย</div>
+                                        <div className="flex-1 py-2 rounded-2xl text-slate-400 text-[10px] font-black text-center uppercase tracking-widest">80%</div>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="absolute right-6 bottom-6 text-6xl opacity-10 group-hover:scale-125 transition-transform duration-700">📍</div>
-                        </div>
-
-                        {/* Order Card */}
-                        <div className="bg-white rounded-[2.5rem] p-8 shadow-xl shadow-slate-200 border border-white relative overflow-hidden group hover:-translate-y-2 transition-all duration-500">
-                            <div className="relative z-10">
-                                <p className="text-slate-400 font-bold text-sm uppercase tracking-widest mb-2">ใบสั่งขาย (SO)</p>
-                                <h3 className="text-4xl font-black text-slate-900 mb-4">{data.soCount} <span className="text-lg text-slate-400">ใบ</span></h3>
-                                <p className="text-xs font-bold text-indigo-500 flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                                    เฉลี่ย {formatCurrency(data.totalAmount / (data.soCount || 1))} / ใบ
-                                </p>
+                            <div className="mt-4 px-2">
+                                <h4 className="text-sm font-black text-slate-900">การเข้าพบลูกค้า</h4>
+                                <p className="text-xs text-slate-400 font-medium leading-relaxed">สรุปจำนวนการ Check-in และกิจกรรมหน้างานของทีมขาย</p>
                             </div>
-                            <div className="absolute right-6 bottom-6 text-6xl opacity-10 group-hover:scale-125 transition-transform duration-700">📄</div>
                         </div>
 
-                        {/* Customer Card */}
-                        <div className="bg-white rounded-[2.5rem] p-8 shadow-xl shadow-slate-200 border border-white relative overflow-hidden group hover:-translate-y-2 transition-all duration-500">
-                            <div className="relative z-10">
-                                <p className="text-slate-400 font-bold text-sm uppercase tracking-widest mb-2">ลูกค้าใหม่</p>
-                                <h3 className="text-4xl font-black text-slate-900 mb-4">{data.visitNew} <span className="text-lg text-slate-400">ราย</span></h3>
-                                <div className="flex -space-x-3">
-                                    {[1,2,3,4].map(i => (
-                                        <div key={i} className={`w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-400`}>{i}</div>
-                                    ))}
-                                    <div className="w-8 h-8 rounded-full border-2 border-white bg-blue-500 flex items-center justify-center text-[10px] font-bold text-white">+</div>
+                        {/* Order Card - Image Focused Style */}
+                        <div className="group cursor-pointer">
+                            <div className="relative h-80 rounded-[3.5rem] bg-gradient-to-br from-indigo-50 to-white overflow-hidden shadow-xl transition-all duration-700 hover:scale-[1.02]">
+                                <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1553413077-190dd305871c?auto=format&fit=crop&q=80&w=400')] bg-cover bg-center opacity-10 group-hover:scale-110 transition-transform duration-[2s]"></div>
+                                
+                                <div className="relative z-10 h-full flex flex-col items-center justify-between p-8">
+                                    <div className="text-center">
+                                        <div className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.3em] mb-1">ใบสั่งขาย (SO)</div>
+                                        <div className="text-4xl font-black text-slate-900 tracking-tight">{data.soCount}</div>
+                                    </div>
+
+                                    <div className="text-6xl group-hover:translate-y-[-10px] transition-transform duration-700">📄</div>
+
+                                    <div className="w-full bg-white/80 backdrop-blur-md rounded-3xl p-3 flex items-center justify-between border border-white shadow-lg">
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">เฉลี่ย / SO</span>
+                                        <span className="text-xs font-black text-indigo-600">{formatCurrency(data.totalAmount / (data.soCount || 1))}</span>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="absolute right-6 bottom-6 text-6xl opacity-10 group-hover:scale-125 transition-transform duration-700">👤</div>
+                            <div className="mt-4 px-2">
+                                <h4 className="text-sm font-black text-slate-900">รายการใบสั่งขาย</h4>
+                                <p className="text-xs text-slate-400 font-medium leading-relaxed">ข้อมูลสรุปจำนวนออเดอร์และยอดขายเฉลี่ยต่อบิล</p>
+                            </div>
+                        </div>
+
+                        {/* Leads Card - Minimalist Style */}
+                        <div className="group cursor-pointer">
+                            <div className="relative h-80 rounded-[3.5rem] bg-white overflow-hidden shadow-xl border border-slate-100 transition-all duration-700 hover:scale-[1.02] hover:border-blue-100">
+                                <div className="relative z-10 h-full flex flex-col items-center justify-between p-8">
+                                    <div className="text-center">
+                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">ลูกค้าใหม่</div>
+                                        <div className="text-4xl font-black text-slate-900 tracking-tight">{data.visitNew}</div>
+                                    </div>
+
+                                    <div className="flex -space-x-4">
+                                        {[1,2,3,4].map(i => (
+                                            <div key={i} className="w-12 h-12 rounded-full border-4 border-white bg-slate-100 flex items-center justify-center text-xl shadow-md transition-transform group-hover:translate-x-2">👤</div>
+                                        ))}
+                                    </div>
+
+                                    <div className="w-full py-3 rounded-3xl bg-slate-900 text-white text-[10px] font-black text-center uppercase tracking-[0.2em] shadow-lg shadow-slate-200">
+                                        ดูรายละเอียด
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-4 px-2">
+                                <h4 className="text-sm font-black text-slate-900">ฐานลูกค้าใหม่</h4>
+                                <p className="text-xs text-slate-400 font-medium leading-relaxed">จำนวนลูกค้าใหม่ที่เพิ่มขึ้นในฐานข้อมูลระบบ</p>
+                            </div>
                         </div>
                     </div>
 
@@ -245,182 +410,223 @@ export default function Dashboard() {
                     )}
 
                     {/* Debt Aging Section */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        <div className="col-span-full mb-2">
-                            <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                                <span className="w-8 h-8 rounded-xl bg-rose-100 text-rose-500 flex items-center justify-center text-sm">⚠️</span>
-                                วิเคราะห์หนี้คงค้าง (Debt Aging)
-                            </h3>
-                        </div>
-                        {[
-                            { range: '0 - 30 วัน', color: 'blue', amt: 1250000 },
-                            { range: '31 - 60 วัน', color: 'amber', amt: 450000 },
-                            { range: '61 - 90 วัน', color: 'orange', amt: 180000 },
-                            { range: '91 วันขึ้นไป', color: 'rose', amt: 85000 }
-                        ].map((d, i) => (
-                            <div key={i} className={`bg-white p-6 rounded-[2rem] shadow-lg shadow-slate-200 border-l-8 border-${d.color}-500 group hover:scale-105 transition-transform duration-300`}>
-                                <p className={`text-[10px] font-black text-${d.color}-500 uppercase tracking-widest mb-1`}>{d.range}</p>
-                                <h4 className="text-2xl font-black text-slate-800">{formatCurrency(d.amt)}</h4>
-                                <div className="mt-3 flex justify-between items-center text-[10px] font-bold text-slate-400">
-                                    <span>24 รายการ</span>
-                                    <span className={`text-${d.color}-600`}>รอเก็บหนี้</span>
-                                </div>
+                    <div className="space-y-8">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <span className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-500 flex items-center justify-center text-lg">⚠️</span>
+                                <h3 className="text-2xl font-black text-slate-900">วิเคราะห์หนี้คงค้าง <span className="text-rose-500">(Debt Aging)</span></h3>
                             </div>
-                        ))}
+                            <div className="flex gap-4">
+                                <input 
+                                    id="ecount-upload"
+                                    type="file" 
+                                    accept=".xlsx,.xls,.csv" 
+                                    className="hidden" 
+                                    onChange={handleFileUpload}
+                                />
+                                <button 
+                                    onClick={() => document.getElementById('ecount-upload').click()}
+                                    disabled={syncingInvoices}
+                                    className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${syncingInvoices ? 'bg-slate-100 text-slate-400' : 'bg-slate-900 text-white hover:bg-black active:scale-95'}`}
+                                >
+                                    {syncingInvoices ? 'กำลังอัปโหลด...' : 'อัปโหลดไฟล์ Ecount'}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                            {[
+                                { range: '0-30', label: '0 - 30 วัน', color: 'blue', grad: 'from-blue-600 to-blue-700', text: 'blue-100', desc: 'ยอดค้างชำระปกติ' },
+                                { range: '31-60', label: '31 - 60 วัน', color: 'amber', grad: 'from-amber-500 to-amber-600', text: 'amber-50', desc: 'เริ่มค้างชำระ' },
+                                { range: '61-90', label: '61 - 90 วัน', color: 'orange', grad: 'from-orange-500 to-orange-600', text: 'orange-50', desc: 'ค้างชำระเกินกำหนด' },
+                                { range: '91+', label: '91 วันขึ้นไป', color: 'rose', grad: 'from-rose-600 to-rose-700', text: 'rose-50', desc: 'หนี้สงสัยจะสูญ' }
+                            ].map((d, i) => {
+                                const stats = data?.agingData?.[d.range] || { amount: 0, count: 0 };
+                                return (
+                                    <div key={i} className="group cursor-pointer" onClick={() => fetchDebtDetail(d.range)}>
+                                        <div className={`relative h-64 rounded-[3.5rem] bg-gradient-to-br ${d.grad} overflow-hidden shadow-2xl transition-all duration-700 hover:scale-[1.05] hover:shadow-${d.color}-500/20`}>
+                                            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 blur-3xl rounded-full translate-x-10 -translate-y-10"></div>
+                                            <div className="relative z-10 h-full flex flex-col items-center justify-between p-8">
+                                                <div className="text-center">
+                                                    <div className={`text-[10px] font-black text-${d.text} uppercase tracking-[0.3em] mb-1 opacity-80`}>{d.label}</div>
+                                                    <div className="text-2xl font-black text-white tracking-tight">{formatCurrency(stats.amount)}</div>
+                                                </div>
+                                                
+                                                <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center text-xl shadow-inner">💰</div>
+
+                                                <div className="w-full bg-white/10 backdrop-blur-md rounded-3xl p-2 flex items-center justify-between border border-white/10 shadow-sm">
+                                                    <span className={`text-[10px] font-black text-${d.text} uppercase tracking-widest`}>{stats.count} รายการ</span>
+                                                    <span className="text-[10px] font-black text-white uppercase tracking-widest">ดูรายละเอียด</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 px-2">
+                                            <h4 className="text-sm font-black text-slate-900">{d.label}</h4>
+                                            <p className="text-xs text-slate-400 font-medium leading-relaxed">{d.desc}</p>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
 
-                    {/* SKU Analysis & Radar Section */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+
+                    {/* SKU Analysis & Radar Section - Redesigned to Apple Style */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
                         {/* SKU Sales Table */}
-                        <div className="lg:col-span-2 bg-white/70 backdrop-blur-xl rounded-[3rem] p-8 shadow-2xl shadow-blue-100 border border-white">
-                            <div className="flex items-center justify-between mb-8">
-                                <h3 className="text-2xl font-black text-slate-900">ยอดขายราย <span className="text-blue-600">SKU</span></h3>
-                                <button className="text-sm font-bold text-blue-600 hover:underline">ดูทั้งหมด</button>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="text-left text-slate-400 text-xs font-black uppercase tracking-widest border-b border-slate-100">
-                                            <th className="pb-4">สินค้า</th>
-                                            <th className="pb-4">จำนวน (Unit)</th>
-                                            <th className="pb-4 text-right">มูลค่ารวม (THB)</th>
-                                            <th className="pb-4 text-center">สัดส่วน</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {data.bestSellingProducts?.map((sku, i) => (
-                                            <tr key={i} className="group hover:bg-slate-50/50 transition-colors">
-                                                <td className="py-5">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-lg shadow-inner group-hover:scale-110 transition-transform">📦</div>
-                                                        <span className="font-bold text-slate-800 text-sm line-clamp-1">{sku.name}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="py-5 font-black text-slate-600">{sku.qty.toLocaleString()}</td>
-                                                <td className="py-5 text-right font-black text-slate-900">{formatCurrency(sku.amount)}</td>
-                                                <td className="py-5">
-                                                    <div className="flex items-center justify-center">
-                                                        <div className="w-12 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, (sku.amount / data.totalAmount) * 200)}%` }}></div>
-                                                        </div>
-                                                    </div>
-                                                </td>
+                        <div className="lg:col-span-2 group">
+                            <div className="bg-white rounded-[3.5rem] p-10 shadow-xl border border-slate-100 transition-all duration-700 hover:shadow-2xl">
+                                <div className="flex items-center justify-between mb-8">
+                                    <h3 className="text-2xl font-black text-slate-900">ยอดขายราย <span className="text-blue-600">SKU</span></h3>
+                                    <button className="text-sm font-bold text-blue-600 hover:underline">ดูทั้งหมด</button>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr className="text-left text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] border-b border-slate-100">
+                                                <th className="pb-6">สินค้า</th>
+                                                <th className="pb-6">จำนวน (Unit)</th>
+                                                <th className="pb-6 text-right">มูลค่ารวม (THB)</th>
+                                                <th className="pb-6 text-center">สัดส่วน</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50">
+                                            {data.bestSellingProducts?.map((sku, i) => (
+                                                <tr key={i} className="group/row hover:bg-slate-50/50 transition-colors">
+                                                    <td className="py-6">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-12 h-12 rounded-[1.25rem] bg-slate-50 flex items-center justify-center text-xl shadow-inner group-hover/row:scale-110 transition-transform">📦</div>
+                                                            <span className="font-bold text-slate-800 text-sm line-clamp-1">{sku.name}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-6 font-black text-slate-600">{sku.qty.toLocaleString()}</td>
+                                                    <td className="py-6 text-right font-black text-slate-900">{formatCurrency(sku.amount)}</td>
+                                                    <td className="py-6">
+                                                        <div className="flex items-center justify-center">
+                                                            <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                                                <div className="h-full bg-blue-500 rounded-full shadow-[0_0_8px_rgba(37,99,235,0.4)]" style={{ width: `${Math.min(100, (sku.amount / data.totalAmount) * 200)}%` }}></div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div className="mt-4 px-4">
+                                <h4 className="text-sm font-black text-slate-900">การจัดอันดับสินค้า</h4>
+                                <p className="text-xs text-slate-400 font-medium">วิเคราะห์สินค้าที่มียอดขายสูงสุดและสัดส่วนในพอร์ตโฟลิโอ</p>
                             </div>
                         </div>
 
-                        {/* Purpose Breakdown - IOS 26 Style */}
-                        <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-[3rem] p-8 shadow-2xl text-white relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-3xl rounded-full"></div>
-                            <h3 className="text-2xl font-black mb-8">Visit <span className="text-blue-400">Activity</span></h3>
-                            
-                            <div className="flex flex-col items-center justify-center py-6">
-                                <div className="relative w-48 h-48 mb-8 flex items-center justify-center">
-                                    <svg className="w-full h-full transform -rotate-90">
-                                        <circle cx="96" cy="96" r="80" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-700" />
-                                        <circle cx="96" cy="96" r="80" stroke="currentColor" strokeWidth="12" fill="transparent" 
-                                            strokeDasharray={2 * Math.PI * 80}
-                                            strokeDashoffset={2 * Math.PI * 80 * (1 - (data.purposes.pitch / (totalPurposes || 1)))}
-                                            className="text-emerald-400 transition-all duration-1000 shadow-[0_0_10px_rgba(52,211,153,0.5)]"
-                                            strokeLinecap="round"
-                                        />
-                                    </svg>
-                                    <div className="absolute flex flex-col items-center">
-                                        <span className="text-4xl font-black">{totalPurposes}</span>
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Visits</span>
+                        {/* Visit Activity - Apple Intelligence Dark Style */}
+                        <div className="group">
+                            <div className="relative h-full min-h-[500px] rounded-[3.5rem] bg-slate-900 overflow-hidden shadow-2xl transition-all duration-700 hover:scale-[1.01]">
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 blur-[100px] rounded-full"></div>
+                                <div className="relative z-10 h-full flex flex-col items-center justify-between p-10">
+                                    <div className="text-center">
+                                        <div className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] mb-2">สรุปกิจกรรม</div>
+                                        <h3 className="text-3xl font-black text-white">กิจกรรม <span className="text-blue-400">การพบลูกค้า</span></h3>
+                                    </div>
+                                    
+                                    <div className="relative w-56 h-56 flex items-center justify-center">
+                                        <svg className="w-full h-full transform -rotate-90">
+                                            <circle cx="112" cy="112" r="90" stroke="currentColor" strokeWidth="16" fill="transparent" className="text-slate-800" />
+                                            <circle cx="112" cy="112" r="90" stroke="currentColor" strokeWidth="16" fill="transparent" 
+                                                strokeDasharray={2 * Math.PI * 90}
+                                                strokeDashoffset={2 * Math.PI * 90 * (1 - (data.purposes.pitch / (totalPurposes || 1)))}
+                                                className="text-blue-500 transition-all duration-1000 shadow-[0_0_20px_rgba(37,99,235,0.5)]"
+                                                strokeLinecap="round"
+                                            />
+                                        </svg>
+                                        <div className="absolute flex flex-col items-center">
+                                            <span className="text-5xl font-black text-white tracking-tight">{totalPurposes}</span>
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">ครั้งทั้งหมด</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="w-full space-y-3">
+                                        {[
+                                            { label: 'เสนอขาย', val: data.purposes.pitch, color: 'blue', icon: '💰' },
+                                            { label: 'ตรวจร้าน', val: data.purposes.inspection, color: 'indigo', icon: '📋' },
+                                            { label: 'เก็บหนี้', val: data.purposes.collection, color: 'rose', icon: '💸' }
+                                        ].map((p, i) => (
+                                            <div key={i} className="flex items-center justify-between bg-white/5 backdrop-blur-md p-4 rounded-[1.5rem] border border-white/5 hover:bg-white/10 transition-colors">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-lg">{p.icon}</span>
+                                                    <span className="text-sm font-bold text-slate-300">{p.label}</span>
+                                                </div>
+                                                <span className="font-black text-white">{p.val} <span className="text-[10px] text-slate-500">ครั้ง</span></span>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
-                                
-                                <div className="w-full space-y-4">
-                                    {[
-                                        { label: 'เสนอขาย', val: data.purposes.pitch, color: 'emerald' },
-                                        { label: 'ตรวจร้าน', val: data.purposes.inspection, color: 'purple' },
-                                        { label: 'เก็บหนี้', val: data.purposes.collection, color: 'rose' }
-                                    ].map((p, i) => (
-                                        <div key={i} className="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 group-hover:bg-white/10 transition-colors">
-                                            <div className="flex items-center gap-3">
-                                                <span className={`w-2 h-2 rounded-full bg-${p.color}-400 shadow-[0_0_8px_rgba(0,0,0,0.5)]`}></span>
-                                                <span className="text-sm font-bold text-slate-300">{p.label}</span>
-                                            </div>
-                                            <span className="font-black text-white">{p.val} <span className="text-[10px] text-slate-500">ครั้ง</span></span>
-                                        </div>
-                                    ))}
-                                </div>
+                            </div>
+                            <div className="mt-4 px-4">
+                                <h4 className="text-sm font-black text-slate-900">สัดส่วนกิจกรรมการตลาด</h4>
+                                <p className="text-xs text-slate-400 font-medium">ภาพรวมจุดประสงค์ของการเข้าพบลูกค้าในแต่ละครั้ง</p>
                             </div>
                         </div>
                     </div>
 
                     {/* Team Radar Map - Premium */}
-                    <div className="bg-white rounded-[3.5rem] p-4 shadow-2xl shadow-blue-100 border border-white relative z-0">
-                        <div className="absolute top-8 left-8 z-10 flex items-center gap-3 bg-white/80 backdrop-blur-md px-6 py-3 rounded-2xl shadow-lg border border-white/50">
-                            <span className="text-2xl animate-pulse">📡</span>
-                            <div>
-                                <h4 className="text-lg font-black text-slate-900 leading-tight">Live Coverage</h4>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase">อัปเดตเรียลไทม์ล่าสุด</p>
+                    {/* Map Section Removed */}
+
+                    {/* Full Page Calendar Section */}
+                    <div className="bg-white rounded-[3.5rem] p-10 shadow-2xl border border-slate-100">
+                        <div className="flex items-center justify-between mb-10">
+                            <h3 className="text-3xl font-black text-slate-900 flex items-center gap-4">
+                                <span className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center">📅</span>
+                                ปฏิทิน <span className="text-blue-600">งานขาย</span>
+                            </h3>
+                            <div className="flex bg-slate-100 p-1 rounded-2xl">
+                                <button className="px-6 py-2 rounded-xl bg-white shadow-sm text-xs font-black text-blue-600 uppercase">มุมมองปฏิทิน</button>
                             </div>
                         </div>
-                        <div className="h-[500px] w-full rounded-[2.5rem] overflow-hidden shadow-inner border border-slate-100">
-                            <DashboardMap visits={data.recentVisits || []} />
+                        <div className="min-h-[700px]">
+                            <DashboardCalendar visits={data.allVisits || []} filters={data.filters} onVisitClick={setSelectedVisit} />
                         </div>
                     </div>
 
-                    {/* Activity Feed & Timeline */}
-                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-10">
-                        <div className="lg:col-span-3 bg-white rounded-[3rem] p-10 shadow-2xl shadow-blue-100 border border-white min-h-[600px]">
-                            <div className="flex items-center gap-8 mb-10 border-b border-slate-50">
-                                <button 
-                                    onClick={() => setActivityTab('timeline')}
-                                    className={`pb-4 text-xl font-black transition-all relative ${activityTab === 'timeline' ? 'text-blue-600' : 'text-slate-300 hover:text-slate-500'}`}
-                                >
-                                    Activity Feed
-                                    {activityTab === 'timeline' && <span className="absolute bottom-0 left-0 w-1/2 h-1 bg-blue-600 rounded-full shadow-[0_0_10px_rgba(37,99,235,0.5)]"></span>}
-                                </button>
-                                <button 
-                                    onClick={() => setActivityTab('calendar')}
-                                    className={`pb-4 text-xl font-black transition-all relative ${activityTab === 'calendar' ? 'text-blue-600' : 'text-slate-300 hover:text-slate-500'}`}
-                                >
-                                    Calendar
-                                    {activityTab === 'calendar' && <span className="absolute bottom-0 left-0 w-1/2 h-1 bg-blue-600 rounded-full shadow-[0_0_10px_rgba(37,99,235,0.5)]"></span>}
-                                </button>
+                    {/* Activity Feed & Team Insights Row */}
+                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-12">
+                        {/* Activity Feed */}
+                        <div className="lg:col-span-3 space-y-8">
+                            <div className="flex items-center justify-between mb-4 px-2">
+                                <h3 className="text-2xl font-black text-slate-900">กิจกรรม <span className="text-blue-600">ล่าสุด</span></h3>
+                                <button className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-colors">ย้อนหลังทั้งหมด</button>
                             </div>
-
-                            {activityTab === 'timeline' ? (
-                                <div className="space-y-8 animate-fade-in">
-                                    {data.recentVisits?.map((visit, idx) => (
-                                        <div key={idx} onClick={() => setSelectedVisit(visit)} className="flex gap-6 group cursor-pointer">
-                                            <div className="flex flex-col items-center">
-                                                <div className="w-14 h-14 rounded-2xl bg-white shadow-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
-                                                    {visit.purpose === 'sales' ? '💰' : visit.purpose === 'inspection' ? '📋' : '📍'}
-                                                </div>
-                                                <div className="w-0.5 h-full bg-slate-100 my-2"></div>
+                            <div className="space-y-6">
+                                {data.recentVisits?.map((visit, idx) => (
+                                    <div key={idx} onClick={() => setSelectedVisit(visit)} className="group cursor-pointer flex gap-6">
+                                        <div className="flex flex-col items-center">
+                                            <div className="w-14 h-14 rounded-[1.5rem] bg-white shadow-xl border border-slate-50 flex items-center justify-center text-2xl group-hover:scale-110 group-hover:rotate-6 transition-all duration-500">
+                                                {visit.purpose === 'sales' ? '💰' : visit.purpose === 'inspection' ? '📋' : '📍'}
                                             </div>
-                                            <div className="flex-1 bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 group-hover:bg-white group-hover:shadow-xl transition-all duration-500">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div>
-                                                        <h4 className="font-black text-slate-800 text-lg group-hover:text-blue-600 transition-colors">{visit.customer_name}</h4>
-                                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{visit.sales_person}</p>
-                                                    </div>
-                                                    <span className="text-[10px] font-black text-slate-300">{new Date(visit.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>
-                                                </div>
-                                                <p className="text-sm text-slate-600 line-clamp-2 mt-2 font-medium">{visit.notes || 'เยี่ยมเยียนและพูดคุยกับลูกค้าทั่วไป'}</p>
-                                            </div>
+                                            <div className="w-0.5 h-full bg-slate-100/50 my-2"></div>
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <DashboardCalendar visits={data.allVisits || []} filters={data.filters} onVisitClick={setSelectedVisit} />
-                            )}
+                                        <div className="flex-1 bg-white p-6 rounded-[2.5rem] border border-slate-100 group-hover:shadow-2xl group-hover:-translate-y-1 transition-all duration-500">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <h4 className="font-black text-slate-800 text-lg group-hover:text-blue-600 transition-colors">{visit.customer_name}</h4>
+                                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">{visit.sales_person}</p>
+                                                </div>
+                                                <span className="text-[10px] font-black text-slate-300">{new Date(visit.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>
+                                            </div>
+                                            <p className="text-sm text-slate-500 line-clamp-2 mt-2 font-medium leading-relaxed">{visit.notes || 'บันทึกการเข้าพบลูกค้าและพูดคุยสถานะทั่วไป'}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
 
-                        {/* Team Leaderboard - IOS Style */}
+                        {/* Leaderboard & Performance - Moved Below Calendar as requested */}
                         <div className="lg:col-span-2 space-y-10">
-                            <div className="bg-white rounded-[3rem] p-8 shadow-2xl shadow-blue-100 border border-white">
+                            {/* Team Leaderboard */}
+                            <div className="bg-white rounded-[3.5rem] p-10 shadow-2xl border border-slate-100">
                                 <h3 className="text-2xl font-black text-slate-900 mb-8 flex items-center gap-3">
                                     <span className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-500 flex items-center justify-center">🏆</span>
-                                    Leaderboard
+                                    อันดับพนักงานขาย
                                 </h3>
                                 <div className="space-y-6">
                                     {data.salesByPerson?.map((person, idx) => (
@@ -450,18 +656,23 @@ export default function Dashboard() {
                                 </div>
                             </div>
 
-                            {/* Additional Info Cards */}
-                            <div className="bg-blue-600 rounded-[3rem] p-8 shadow-2xl shadow-blue-300 text-white relative overflow-hidden group">
-                                <div className="absolute -right-4 -bottom-4 text-9xl opacity-10 group-hover:scale-110 transition-transform">📊</div>
-                                <h3 className="text-xl font-black mb-4">ประสิทธิภาพโดยรวม</h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-                                        <p className="text-[10px] font-bold text-blue-200 uppercase mb-1">ระยะทางรวม</p>
-                                        <p className="text-2xl font-black">{data.totalDistance?.toFixed(0)} <span className="text-xs opacity-60">km</span></p>
+                            {/* Overall Performance */}
+                            <div className="group">
+                                <div className="relative bg-blue-600 rounded-[3.5rem] p-10 shadow-2xl shadow-blue-300 text-white overflow-hidden transition-all duration-700 hover:scale-[1.02]">
+                                    <div className="absolute -right-4 -bottom-4 text-9xl opacity-10 group-hover:scale-110 transition-transform">📊</div>
+                                    <h3 className="text-2xl font-black mb-8">ประสิทธิภาพทีมงาน</h3>
+                                    <div className="grid grid-cols-2 gap-6">
+                                        <div className="bg-white/10 backdrop-blur-md p-6 rounded-[2rem] border border-white/10">
+                                            <p className="text-[10px] font-bold text-blue-200 uppercase mb-2 tracking-widest">ระยะทางรวม</p>
+                                            <p className="text-3xl font-black">{data.totalDistance?.toFixed(0)} <span className="text-sm opacity-60">km</span></p>
+                                        </div>
+                                        <div className="bg-white/10 backdrop-blur-md p-6 rounded-[2rem] border border-white/10">
+                                            <p className="text-[10px] font-bold text-blue-200 uppercase mb-2 tracking-widest">จุดที่มีความเสี่ยง</p>
+                                            <p className="text-3xl font-black text-rose-300">{data.fraudCount} <span className="text-sm opacity-60">จุด</span></p>
+                                        </div>
                                     </div>
-                                    <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-                                        <p className="text-[10px] font-bold text-blue-200 uppercase mb-1">ความเสี่ยง</p>
-                                        <p className="text-2xl font-black text-rose-300">{data.fraudCount} <span className="text-xs opacity-60">จุด</span></p>
+                                    <div className="mt-8 py-4 px-6 bg-white/10 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-center border border-white/5">
+                                        ดูรายงานฉบับเต็ม
                                     </div>
                                 </div>
                             </div>
@@ -469,6 +680,7 @@ export default function Dashboard() {
                     </div>
                 </div>
             </div>
+
 
             {/* Premium Details Modal */}
             {selectedVisit && (
@@ -571,7 +783,105 @@ export default function Dashboard() {
                 </div>
             )}
 
+            {/* Debt Detail Modal */}
+            {showDebtModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onClick={() => setShowDebtModal(null)}></div>
+                    <div className="relative bg-white w-full max-w-4xl max-h-[85vh] rounded-[3.5rem] shadow-2xl overflow-hidden flex flex-col border border-slate-100">
+                        <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                            <h3 className="text-xl font-black text-slate-900">รายการค้างชำระ ({showDebtModal} วัน)</h3>
+                            <button onClick={() => setShowDebtModal(null)} className="w-10 h-10 rounded-full bg-white border border-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all shadow-sm">✕</button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-8">
+                            {loadingDebt ? (
+                                <div className="flex flex-col items-center justify-center py-20"><Loading /></div>
+                            ) : (
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
+                                            <th className="pb-4 text-left">เลขที่ / วันที่</th>
+                                            <th className="pb-4 text-left">ลูกค้า / PIC</th>
+                                            <th className="pb-4 text-right">ยอดค้างชำระ</th>
+                                            <th className="pb-4 text-center">จัดการ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {debtInvoices.map((inv, idx) => (
+                                            <tr key={idx} className="group hover:bg-slate-50/50 transition-all">
+                                                <td className="py-4">
+                                                    <div className="text-sm font-black text-slate-900 group-hover:text-blue-600 transition-colors">{inv.invoice_no}</div>
+                                                    <div className="text-[10px] text-slate-400 font-medium uppercase mt-0.5">{formatDate(inv.invoice_date)}</div>
+                                                </td>
+                                                <td className="py-4">
+                                                    <div className="text-sm font-bold text-slate-700">{inv.customer_name}</div>
+                                                    <div className="text-[10px] text-slate-400 font-medium uppercase mt-0.5">PIC: {inv.pic_name || inv.pic_code || '-'}</div>
+                                                </td>
+                                                <td className="py-4 text-right font-black text-slate-900">{formatCurrency(inv.outstanding_amount)}</td>
+                                                <td className="py-4 text-center">
+                                                    <button 
+                                                        onClick={() => setSelectedPayInvoice(inv)}
+                                                        className="px-4 py-1.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-black hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                                    >
+                                                        ชำระเงิน
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Payment Modal */}
+            {selectedPayInvoice && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-lg" onClick={() => !uploadingSlip && setSelectedPayInvoice(null)}></div>
+                    <div className="relative bg-white w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden animate-zoom-in border border-white">
+                        <div className="p-8 bg-blue-600 text-white">
+                            <h3 className="text-2xl font-black mb-1">ยืนยันการชำระเงิน</h3>
+                            <p className="text-blue-100 text-sm font-bold uppercase tracking-widest">{selectedPayInvoice.invoice_no}</p>
+                        </div>
+                        <div className="p-10 space-y-8">
+                            <div className="flex justify-between items-center pb-6 border-b border-slate-100">
+                                <span className="text-slate-400 font-bold uppercase text-xs tracking-widest">ยอดที่ต้องชำระ</span>
+                                <span className="text-3xl font-black text-slate-900">{formatCurrency(selectedPayInvoice.outstanding_amount)}</span>
+                            </div>
+                            <div className="space-y-4">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">อัปโหลดหลักฐานการโอนเงิน (Slip)</p>
+                                <div className="relative group">
+                                    <input type="file" accept="image/*" onChange={(e) => setSlipFile(e.target.files[0])} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"/>
+                                    <div className={`h-40 rounded-[2rem] border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all ${slipFile ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 group-hover:border-blue-400 group-hover:bg-blue-50'}`}>
+                                        <span className="text-3xl">{slipFile ? '✅' : '📸'}</span>
+                                        <p className={`text-xs font-black uppercase tracking-widest ${slipFile ? 'text-emerald-600' : 'text-slate-400'}`}>{slipFile ? slipFile.name : 'คลิกเพื่อเลือกไฟล์ภาพ Slip'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex gap-4 pt-4">
+                                <button onClick={() => setSelectedPayInvoice(null)} disabled={uploadingSlip} className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-500 font-black text-sm uppercase tracking-widest hover:bg-slate-200 transition-all">ยกเลิก</button>
+                                <button onClick={handlePaymentSubmit} disabled={uploadingSlip || !slipFile} className={`flex-1 py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-xl ${uploadingSlip || !slipFile ? 'bg-slate-200 text-slate-400' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/20 active:scale-95'}`}>{uploadingSlip ? 'กำลังบันทึก...' : 'ยืนยันการชำระ'}</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style jsx global>{`
+                .glass-card {
+                    background: rgba(255, 255, 255, 0.7);
+                    backdrop-filter: blur(20px) saturate(180%);
+                    -webkit-backdrop-filter: blur(20px) saturate(180%);
+                    border: 1px solid rgba(255, 255, 255, 0.4);
+                    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.05);
+                }
+                
+                .glass-card:hover {
+                    background: rgba(255, 255, 255, 0.85);
+                    border: 1px solid rgba(255, 255, 255, 0.6);
+                }
+
                 @keyframes slide-up {
                     from { transform: translateY(30px); opacity: 0; }
                     to { transform: translateY(0); opacity: 1; }
@@ -587,6 +897,25 @@ export default function Dashboard() {
                 .animate-slide-up { animation: slide-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
                 .animate-zoom-in { animation: zoom-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
                 .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
+
+                /* Premium Hover Effects */
+                .glass-card::before {
+                    content: '';
+                    position: absolute;
+                    inset: 0;
+                    border-radius: inherit;
+                    padding: 2px;
+                    background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,255,255,0.2), rgba(37,99,235,0.1));
+                    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+                    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+                    -webkit-mask-composite: xor;
+                    mask-composite: exclude;
+                    opacity: 0.5;
+                    transition: opacity 0.5s ease;
+                }
+                .glass-card:hover::before {
+                    opacity: 1;
+                }
             `}</style>
         </Layout>
     );

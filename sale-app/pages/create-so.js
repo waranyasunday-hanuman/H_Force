@@ -330,7 +330,7 @@ export default function CreateSO() {
 
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedCustomer, setSelectedCustomer] = useState("");
-    const [items, setItems] = useState([{ productCode: "", quantity: 1, price: 0, unit: "", productName: "" }]);
+    const [items, setItems] = useState([{ productCode: "", quantity: "", price: "", unit: "", productName: "" }]);
 
     const [paymentType, setPaymentType] = useState("cash");
     const [paymentSlip, setPaymentSlip] = useState(null);
@@ -437,7 +437,7 @@ export default function CreateSO() {
         }
     }, [date, creditDays, paymentType]);
 
-    const handleAddItem = () => setItems([...items, { productCode: "", quantity: 1, price: 0, unit: "", productName: "" }]);
+    const handleAddItem = () => setItems([...items, { productCode: "", quantity: "", price: "", unit: "", productName: "" }]);
 
     const handleRemoveItem = (i) => { const n = [...items]; n.splice(i, 1); setItems(n); };
 
@@ -447,7 +447,9 @@ export default function CreateSO() {
         if (field === "productCode" && products.length) {
             const prod = products.find(p => p.PROD_CD === value);
             if (prod) {
-                n[index].price = parseFloat(prod.OUT_PRICE || 0);
+                // If price is 0, we still want to show empty if possible, but ERP usually has default prices.
+                // We'll set it to the default price from Ecount.
+                n[index].price = prod.OUT_PRICE ? parseFloat(prod.OUT_PRICE).toString() : "";
                 n[index].unit = prod.UNIT || prod.IN_UNIT || "";
                 n[index].productName = prod.PROD_DES || prod.PROD_NAME || prod.PROD_NM || "";
             }
@@ -707,7 +709,7 @@ export default function CreateSO() {
                                     <button type="button" onClick={() => {
                                         setSavedOrderData(null);
                                         setMessage({text:"", type:""});
-                                        setItems([{ productCode: "", quantity: 1, price: 0, unit: "", productName: "" }]);
+                                        setItems([{ productCode: "", quantity: "", price: "", unit: "", productName: "" }]);
                                         setSelectedCustomer(""); setNewCustomerName("");
                                         setPaymentSlip(null); setDueDate("");
                                         setDiscount(0); setDeposit(0);
@@ -729,7 +731,12 @@ export default function CreateSO() {
                             <SectionLabel n="1" text="ข้อมูลเอกสาร & ลูกค้า" />
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <ThaiDatePicker label="วันที่สั่งซื้อ" value={date} onChange={setDate} />
+                                    <label className="block text-xs font-bold text-indigo-600 mb-1.5">วันที่สั่งซื้อ (Order Date)</label>
+                                    <div className="px-4 py-2.5 rounded-xl border border-indigo-100 bg-indigo-50/50 text-indigo-900 font-bold text-sm flex items-center gap-2">
+                                        <span>📅</span>
+                                        {new Date(date).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                    </div>
+                                    <p className="text-[10px] text-gray-400 mt-1">ระบบกำหนดวันที่ปัจจุบันให้อัตโนมัติ</p>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-indigo-600 mb-1.5">ลูกค้า</label>
@@ -802,7 +809,8 @@ export default function CreateSO() {
                                                     <label className="block text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1.5">จำนวน</label>
                                                     <input
                                                         type="number" min="1" value={item.quantity}
-                                                        onChange={e => handleItemChange(index, "quantity", parseInt(e.target.value) || 0)}
+                                                        onChange={e => handleItemChange(index, "quantity", e.target.value)}
+                                                        placeholder="ระบุจำนวน"
                                                         className={inputCls + " text-right"}
                                                         required
                                                     />
@@ -820,8 +828,9 @@ export default function CreateSO() {
                                                     <label className="block text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1.5">ราคา/หน่วย (฿)</label>
                                                     <input
                                                         type="number" min="0" step="0.01"
-                                                        value={parseFloat(item.price).toFixed(2)}
-                                                        onChange={e => handleItemChange(index, "price", parseFloat(e.target.value) || 0)}
+                                                        value={item.price}
+                                                        onChange={e => handleItemChange(index, "price", e.target.value)}
+                                                        placeholder="0.00"
                                                         className={inputCls + " text-right font-mono"}
                                                     />
                                                 </div>
@@ -926,12 +935,12 @@ export default function CreateSO() {
                             <div className="bg-white/60 rounded-2xl border border-white/80 p-4">
                                 {paymentType === "cash" && (
                                     <div className="sm:w-3/4">
-                                        <ThaiDatePicker 
-                                            label="วันที่นำเงินสดฝากธนาคาร (Due Date) *" 
-                                            value={dueDate} 
-                                            onChange={setDueDate} 
-                                        />
-                                        <p className="text-xs text-gray-400 mt-2">ระบบจะแจ้งเตือนให้นำเงินสดเข้าฝากตามกำหนด (+3 วันอัตโนมัติ)</p>
+                                        <label className="block text-xs font-bold text-indigo-600 mb-1.5">วันที่นำเงินสดฝากธนาคาร (Due Date) *</label>
+                                        <div className="px-4 py-2.5 rounded-xl border border-indigo-100 bg-indigo-50/50 text-indigo-900 font-bold text-sm flex items-center gap-2">
+                                            <span>💰</span>
+                                            {dueDate ? new Date(dueDate).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' }) : "-"}
+                                        </div>
+                                        <p className="text-[10px] text-gray-400 mt-2">ระบบจะแจ้งเตือนให้นำเงินสดเข้าฝากตามกำหนด (+3 วันอัตโนมัติ)</p>
                                     </div>
                                 )}
                                 {paymentType === "transfer" && (
@@ -956,14 +965,12 @@ export default function CreateSO() {
                                             />
                                         </div>
                                         <div className="sm:col-span-2">
-                                            <ThaiDatePicker 
-                                                label="วันครบกำหนดชำระ (Due Date) *" 
-                                                value={dueDate} 
-                                                onChange={setDueDate} 
-                                            />
-                                        </div>
-                                        <div className="sm:col-span-2">
-                                            <p className="text-xs text-gray-400">ระบบคำนวณวันครบกำหนดให้อัตโนมัติตามจำนวนวันเครดิต</p>
+                                            <label className="block text-xs font-bold text-indigo-600 mb-1.5">วันครบกำหนดชำระ (Due Date) *</label>
+                                            <div className="px-4 py-2.5 rounded-xl border border-indigo-100 bg-indigo-50/50 text-indigo-900 font-bold text-sm flex items-center gap-2">
+                                                <span>💳</span>
+                                                {dueDate ? new Date(dueDate).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' }) : "-"}
+                                            </div>
+                                            <p className="text-[10px] text-gray-400 mt-2">ระบบคำนวณวันครบกำหนดให้อัตโนมัติตามจำนวนวันเครดิต</p>
                                         </div>
                                     </div>
                                 )}

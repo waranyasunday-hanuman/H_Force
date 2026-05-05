@@ -191,6 +191,39 @@ export default async function handler(req, res) {
                 role: profileMap[u.id]?.role
             }));
 
+        // --- Fetch Debt Aging Data ---
+        let debtQuery = supabase
+            .from('invoices')
+            .select('*')
+            .eq('status', 'pending');
+        
+        if (user && user !== 'all') {
+            // เราอาจต้อง map user email ไปยัง pic_code หรือใช้ PIC Name
+            // ในที่นี้ลองหาจาก pic_name หรือ pic_code ถ้ามี mapping
+            debtQuery = debtQuery.or(`pic_name.eq.${user},pic_code.eq.${user}`);
+        }
+
+        const { data: debtInvoices } = await debtQuery;
+        
+        const agingData = {
+            '0-30': { amount: 0, count: 0 },
+            '31-60': { amount: 0, count: 0 },
+            '61-90': { amount: 0, count: 0 },
+            '91+': { amount: 0, count: 0 }
+        };
+
+        const today = new Date();
+        (debtInvoices || []).forEach(inv => {
+            const invDate = new Date(inv.invoice_date);
+            const diffDays = Math.floor((today - invDate) / (1000 * 60 * 60 * 24));
+            const amt = parseFloat(inv.outstanding_amount || 0);
+
+            if (diffDays <= 30) { agingData['0-30'].amount += amt; agingData['0-30'].count++; }
+            else if (diffDays <= 60) { agingData['31-60'].amount += amt; agingData['31-60'].count++; }
+            else if (diffDays <= 90) { agingData['61-90'].amount += amt; agingData['61-90'].count++; }
+            else { agingData['91+'].amount += amt; agingData['91+'].count++; }
+        });
+
         // --- Return Data ---
         res.status(200).json({ 
             totalAmount,
@@ -212,6 +245,7 @@ export default async function handler(req, res) {
             purposes,
             recentVisits,
             allVisits: visitsData || [],
+            agingData, // ข้อมูลลูกหนี้จริง
             filters: { startStr, endStr, user } 
         });
         

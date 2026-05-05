@@ -57,6 +57,14 @@ export default function MenuPage() {
             ]
         },
         {
+            category: "บัญชี การเงิน (Finance)",
+            icon: "💸",
+            managerOnly: true,
+            items: [
+                { name: "หนี้ค้างชำระ",           path: "/finance",          icon: "💰", desc: "Debt Aging & Upload" },
+            ]
+        },
+        {
             category: "รายงาน (Reports)",
             icon: "📊",
             items: [
