@@ -5,10 +5,15 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "static-build": "next build && npx cap copy",
+    "mobile-sync": "npx cap sync",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/cli": "^8.3.1",
+    "@capacitor/core": "^8.3.1",
     "@supabase/supabase-js": "^2.49.1",
     "cookie": "^1.1.1",
     "leaflet": "^1.9.4",
