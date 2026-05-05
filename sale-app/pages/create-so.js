@@ -19,8 +19,18 @@ function printSO({ order, customer, items, paymentType, dueDate, userEmail, date
     const printDate = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear() + 543}`;
     const soDate = date ? `${date.slice(6, 8)}/${date.slice(4, 6)}/${parseInt(date.slice(0, 4)) + 543}` : printDate;
 
-    const win = window.open("", "_blank", "width=800,height=900");
-    win.document.write(`
+    // Use a hidden iframe for printing to bypass pop-up blockers in Capacitor/Android
+    let iframe = document.getElementById('print-iframe');
+    if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'print-iframe';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+    }
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -29,47 +39,35 @@ function printSO({ order, customer, items, paymentType, dueDate, userEmail, date
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Noto Sans Thai', sans-serif; font-size: 13px; color: #111; background: #fff; padding: 20px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .page { max-width: 720px; margin: 0 auto; border: 2px solid #6366f1; border-radius: 12px; overflow: hidden; }
-  .header { background: linear-gradient(135deg,#6366f1,#8b5cf6); color: #fff; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; }
+  body { font-family: 'Noto Sans Thai', sans-serif; font-size: 13px; color: #111; background: #fff; padding: 20px; }
+  .page { max-width: 100%; border: none; border-radius: 0; padding: 0; }
+  .header { background: #6366f1; color: #fff; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; -webkit-print-color-adjust: exact; }
   .header h1 { font-size: 22px; font-weight: 700; }
   .header .meta { font-size: 12px; opacity: .85; text-align: right; }
   .section { padding: 16px 24px; border-bottom: 1px solid #e5e7eb; }
-  .section:last-child { border-bottom: none; }
   .section-title { font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .field label { font-size: 11px; color: #6b7280; font-weight: 600; display: block; margin-bottom: 2px; }
   .field span { font-size: 13px; font-weight: 600; color: #111; }
   table { width: 100%; border-collapse: collapse; }
-  thead th { background: #f5f3ff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #6366f1; padding: 8px 10px; text-align: left; border-bottom: 2px solid #e0e7ff; }
+  thead th { background: #f5f3ff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #6366f1; padding: 8px 10px; text-align: left; border-bottom: 2px solid #e0e7ff; -webkit-print-color-adjust: exact; }
   tbody td { padding: 8px 10px; font-size: 12px; border-bottom: 1px solid #f3f4f6; }
-  tbody tr:nth-child(even) td { background: #fafafa; }
   .text-right { text-align: right; }
   .total-row { display: flex; justify-content: flex-end; padding: 12px 24px; }
-  .total-box { background: #f5f3ff; border: 1px solid #e0e7ff; border-radius: 10px; padding: 12px 20px; min-width: 240px; }
-  .total-box .label { font-size: 12px; color: #6b7280; }
-  .total-box .amount { font-size: 20px; font-weight: 700; color: #6366f1; }
-  .payment-badge { display: inline-block; background: #ede9fe; color: #6366f1; border-radius: 20px; padding: 4px 12px; font-size: 12px; font-weight: 700; }
+  .total-box { background: #f5f3ff; border: 1px solid #e0e7ff; border-radius: 10px; padding: 12px 20px; min-width: 240px; -webkit-print-color-adjust: exact; }
+  .payment-badge { display: inline-block; background: #ede9fe; color: #6366f1; border-radius: 20px; padding: 4px 12px; font-size: 12px; font-weight: 700; -webkit-print-color-adjust: exact; }
   .footer { background: #f9fafb; padding: 14px 24px; display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af; }
   .sign-area { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #d1d5db; display: flex; gap: 40px; }
   .sign-box { flex: 1; text-align: center; }
   .sign-box .line { border-top: 1px solid #374151; margin: 24px 8px 4px; }
-  .sign-box .role { font-size: 11px; color: #6b7280; }
   @media print { 
     @page { size: A4; margin: 0; }
-    body { padding: 0; margin: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; } 
-    .page { max-width: 100%; border: none; border-radius: 0; padding: 20px; box-shadow: none; height: 100vh; display: flex; flex-direction: column; } 
-    .no-print { display: none !important; }
-    .flex-1 { flex: 1; }
+    body { padding: 0; margin: 0; } 
   }
 </style>
 </head>
-<body>
-<div class="no-print" style="text-align: right; margin-bottom: 20px; padding: 20px;">
-  <button onclick="window.print()" style="padding: 10px 20px; background: #6366f1; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; box-shadow: 0 4px 6px rgba(99,102,241,0.2);">🖨️ พิมพ์เอกสาร</button>
-</div>
+<body onload="window.print()">
 <div class="page">
-  <!-- Header -->
   <div class="header">
     <div>
       <div style="font-size:12px;opacity:.8;margin-bottom:4px;font-weight:bold;">ใบกำกับภาษีอย่างย่อ / ใบเสร็จรับเงิน</div>
@@ -78,12 +76,9 @@ function printSO({ order, customer, items, paymentType, dueDate, userEmail, date
     <div class="meta">
       <div style="font-size:14px;font-weight:700">วันที่พิมพ์: ${printDate}</div>
       <div>วันที่เอกสาร: ${soDate}</div>
-      <div>พนักงานขาย (SALE): ${userEmail}</div>
-      <div style="margin-top:4px;font-weight:bold;color:#fbbf24;">เล่มที่: _______ เลขที่: ${order?.soNumber || order?.orderId || '—'}</div>
+      <div style="font-weight:bold;color:#fbbf24;">เลขที่: ${order?.soNumber || order?.orderId || '—'}</div>
     </div>
   </div>
-
-  <!-- Customer -->
   <div class="section">
     <div class="section-title">ข้อมูลลูกค้า</div>
     <div class="row2">
@@ -91,29 +86,14 @@ function printSO({ order, customer, items, paymentType, dueDate, userEmail, date
       <div class="field"><label>ชื่อลูกค้า</label><span>${customer?.name || "—"}</span></div>
     </div>
   </div>
-
-  <!-- Items -->
   <div class="section">
-    <div class="section-title">รายการสินค้า</div>
     <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>รหัสสินค้า</th>
-          <th>ชื่อสินค้า</th>
-          <th>หน่วย</th>
-          <th class="text-right">จำนวน</th>
-          <th class="text-right">ราคา/หน่วย</th>
-          <th class="text-right">รวม</th>
-        </tr>
-      </thead>
+      <thead><tr><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th class="text-right">จำนวน</th><th class="text-right">ราคา</th><th class="text-right">รวม</th></tr></thead>
       <tbody>
         ${items.map((it, i) => `
           <tr>
-            <td>${i + 1}</td>
             <td>${it.productCode}</td>
             <td>${it.productName || ""}</td>
-            <td>${it.unit || ""}</td>
             <td class="text-right">${it.quantity}</td>
             <td class="text-right">${fmtCurr(it.price)}</td>
             <td class="text-right">${fmtCurr(it.price * it.quantity)}</td>
@@ -122,93 +102,41 @@ function printSO({ order, customer, items, paymentType, dueDate, userEmail, date
       </tbody>
     </table>
   </div>
-
-  <!-- Total Summary -->
   <div class="total-row">
-    <div class="total-box" style="min-width:280px">
-      <table style="width:100%;font-size:13px">
-        <tr><td style="color:#6b7280;padding:3px 0">ยอดรวมก่อนส่วนลด</td><td class="text-right" style="font-weight:600">${fmtCurr(subTotal)}</td></tr>
-        ${discAmt > 0 ? `<tr><td style="color:#ef4444;padding:3px 0">ส่วนลดท้ายบิล</td><td class="text-right" style="color:#ef4444;font-weight:600">- ${fmtCurr(discAmt)}</td></tr>` : ''}
-        <tr style="border-top:1px solid #e0e7ff"><td style="font-weight:700;padding:6px 0 3px">ยอดหลังส่วนลด</td><td class="text-right" style="font-weight:700;font-size:16px;color:#6366f1">${fmtCurr(totalAmount)}</td></tr>
-        ${depositAmt > 0 ? `<tr><td style="color:#059669;padding:3px 0">มัดจำที่ชำระแล้ว</td><td class="text-right" style="color:#059669;font-weight:600">- ${fmtCurr(depositAmt)}</td></tr>
-        <tr style="border-top:2px solid #6366f1"><td style="font-weight:700;padding:6px 0 0">ยอดค้างชำระ</td><td class="text-right" style="font-weight:800;font-size:18px;color:#6366f1">${fmtCurr(netPayable)}</td></tr>` : ''}
+    <div class="total-box">
+      <table style="width:100%">
+        <tr><td>ยอดรวม</td><td class="text-right">${fmtCurr(subTotal)}</td></tr>
+        <tr style="border-top:1px solid #6366f1"><td style="font-weight:700">สุทธิ</td><td class="text-right" style="font-weight:700;font-size:16px">${fmtCurr(totalAmount)}</td></tr>
       </table>
     </div>
   </div>
-
-  <!-- Payment -->
-  <div class="section">
-    <div class="section-title">การชำระเงิน</div>
-    <div class="row2">
-      <div class="field">
-        <label>วิธีชำระเงิน</label>
-        <div><span class="payment-badge">${paymentLabel}</span></div>
-      </div>
-      <div class="field">
-        <label>หมายเหตุ / ภาษี</label>
-        <div><span style="font-size: 12px; color: ${order?.needTaxInvoice || order?.need_tax_invoice ? '#059669' : '#6b7280'};">
-          ${order?.needTaxInvoice || order?.need_tax_invoice ? '✅ ต้องการใบกำกับภาษีเต็มรูปแบบ' : '— ไม่ต้องการใบกำกับภาษี —'}
-        </span></div>
-        ${order?.managerRemarks ? `<div style="margin-top: 6px; font-size: 12px; color: #b45309; background: #fffbeb; padding: 4px 8px; border-radius: 4px; border-left: 2px solid #f59e0b;">💬 อนุมัติ: ${order.managerRemarks}</div>` : ''}
-      </div>
-      ${dueDate ? `<div class="field"><label>วันกำหนดชำระ / Due Date</label><span>${dueDate}</span></div>` : ""}
-    </div>
-  </div>
-
-  <div class="flex-1"></div> <!-- Push signatures to bottom -->
-
-  <!-- Signatures -->
-  <div class="section" style="border-bottom: none;">
-    <div class="sign-area">
-      <div class="sign-box">
-        <div style="height: 60px; display:flex; align-items:flex-end; justify-content:center;">
-          <div style="font-family: 'cursive'; font-size: 16px; color: #4f46e5;">${userEmail.split('@')[0]}</div>
-        </div>
-        <div class="line"></div>
-        <div>ลายมือชื่อผู้ขาย</div>
-        <div class="role" style="margin-top:2px;">( ${userEmail} )</div>
-      </div>
-      <div class="sign-box">
-        <div style="height: 60px; display:flex; align-items:flex-end; justify-content:center;">
-          ${order?.signatureUrl || order?.customer_signature_url ? `<img src="${order.signatureUrl || order.customer_signature_url}" style="max-height: 60px; max-width: 100%; object-fit: contain;" />` : ''}
-        </div>
-        <div class="line"></div>
-        <div>ลายมือชื่อลูกค้า</div>
-        <div class="role" style="margin-top:2px;">( Customer )</div>
-      </div>
-      <div class="sign-box">
-        <div style="height: 60px; display:flex; align-items:flex-end; justify-content:center;">
-          <div style="font-family: 'cursive'; font-size: 16px; color: #4f46e5;">${order?.approverName ? 'Approved' : ''}</div>
-        </div>
-        <div class="line"></div>
-        <div>ลายมือชื่อผู้อนุมัติ</div>
-        <div class="role" style="margin-top:2px;">( ${order?.approverName || 'Manager'} )</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Footer -->
-  <div class="footer">
-    <span>พิมพ์จากระบบ H Force · ${printDate}</span>
-    <span>*เอกสารนี้ออกโดยระบบอัตโนมัติ</span>
-  </div>
+  <div class="section"><div class="section-title">การชำระเงิน</div><span class="payment-badge">${paymentLabel}</span></div>
+  <div class="footer"><span>พิมพ์จากระบบ H Force</span></div>
 </div>
 </body>
 </html>`);
-    win.document.close();
+    doc.close();
 }
 
 function printPOSReceipt({ order, customer, items, paymentType, userEmail, date, discount, deposit }) {
     const subTotal = items.reduce((s, it) => s + it.price * it.quantity, 0);
     const discAmt = parseFloat(discount) || 0;
     const totalAmount = subTotal - discAmt;
-    
     const fmtCurr = (v) => new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
     const now = new Date();
     const printDate = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear() + 543} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
-    const win = window.open("", "_blank", "width=302,height=600");
-    win.document.write(`
+    let iframe = document.getElementById('print-pos-iframe');
+    if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'print-pos-iframe';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+    }
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`
         <html>
         <head>
             <meta charset="utf-8"/>
@@ -222,13 +150,13 @@ function printPOSReceipt({ order, customer, items, paymentType, userEmail, date,
                 table { width: 100%; border-collapse: collapse; }
                 .header { margin-bottom: 4mm; }
                 p { margin: 1mm 0; }
+                @media print { @page { margin: 0; size: 80mm auto; } }
             </style>
         </head>
-        <body onload="window.print(); setTimeout(() => window.close(), 500);">
+        <body onload="window.print()">
             <div class="header text-center">
                 <h2 style="margin:0; font-size: 18px;">H FORCE</h2>
-                <div style="font-size:10px">ใบกำกับภาษีอย่างย่อ</div>
-                <div style="font-size:10px">(SIMPLIFIED TAX INVOICE)</div>
+                <div style="font-size:10px">ใบกำกับภาษีอย่างย่อ (POS)</div>
             </div>
             <div class="divider"></div>
             <p><strong>No:</strong> ${order?.soNumber || order?.orderId || '-'}</p>
@@ -236,38 +164,23 @@ function printPOSReceipt({ order, customer, items, paymentType, userEmail, date,
             <p><strong>Cust:</strong> ${customer?.name || '-'}</p>
             <div class="divider"></div>
             <table>
-                <thead>
-                    <tr class="font-bold">
-                        <th align="left">รายการ</th>
-                        <th align="right">รวม</th>
-                    </tr>
-                </thead>
                 <tbody>
                     ${items.map(it => `
-                        <tr>
-                            <td colspan="2" style="padding-top: 2mm">${it.productName}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding-left: 2mm; color: #333;">${it.quantity} x ${fmtCurr(it.price)}</td>
-                            <td align="right">${fmtCurr(it.price * it.quantity)}</td>
-                        </tr>
+                        <tr><td colspan="2" style="padding-top: 2mm">${it.productName}</td></tr>
+                        <tr><td style="padding-left: 2mm">${it.quantity} x ${fmtCurr(it.price)}</td><td align="right">${fmtCurr(it.price * it.quantity)}</td></tr>
                     `).join('')}
                 </tbody>
             </table>
             <div class="divider"></div>
             <div class="font-bold" style="display:flex; justify-content:space-between; font-size: 14px;">
-                <span>ยอดรวมทั้งสิ้น:</span>
-                <span>${fmtCurr(totalAmount)}</span>
+                <span>ยอดรวมสุทธิ:</span><span>${fmtCurr(totalAmount)}</span>
             </div>
             <div class="divider"></div>
-            <div class="text-center" style="margin-top:5mm">
-                <p>*** ขอบคุณที่ใช้บริการ ***</p>
-                <p style="font-size:9px; opacity: 0.7;">พนักงาน: ${userEmail}</p>
-            </div>
+            <div class="text-center" style="margin-top:5mm"><p>*** ขอบคุณที่ใช้บริการ ***</p></div>
         </body>
         </html>
     `);
-    win.document.close();
+    doc.close();
 }
 
 // ─── Searchable Combobox ────────────────────────────────────────────────────

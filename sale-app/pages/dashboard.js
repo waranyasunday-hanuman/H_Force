@@ -126,8 +126,41 @@ export default function Dashboard() {
     const handlePrintPOS = (inv) => {
         setSelectedPrintInvoice(inv);
         setTimeout(() => {
-            window.print();
-        }, 300);
+            let iframe = document.getElementById('print-pos-iframe');
+            if (!iframe) {
+                iframe = document.createElement('iframe');
+                iframe.id = 'print-pos-iframe';
+                iframe.style.display = 'none';
+                document.body.appendChild(iframe);
+            }
+
+            const doc = iframe.contentWindow.document;
+            const content = document.getElementById('pos-receipt-content').innerHTML;
+            
+            doc.open();
+            doc.write(`
+                <html>
+                <head>
+                    <meta charset="utf-8"/>
+                    <style>
+                        @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@400;700&display=swap');
+                        body { font-family: 'Prompt', sans-serif; width: 80mm; margin: 0; padding: 4mm; font-size: 11px; color: black; }
+                        .text-center { text-align: center; }
+                        .text-right { text-align: right; }
+                        .font-bold { font-weight: bold; }
+                        .divider { border-top: 1px dashed black; margin: 2mm 0; }
+                        .receipt-row { display: flex; justify-content: space-between; margin-bottom: 1mm; }
+                        .receipt-total { font-size: 14px; font-weight: bold; display: flex; justify-content: space-between; margin-top: 2mm; }
+                        @media print { @page { margin: 0; size: 80mm auto; } }
+                    </style>
+                </head>
+                <body onload="window.print()">
+                    ${content}
+                </body>
+                </html>
+            `);
+            doc.close();
+        }, 500);
     };
 
     const handlePaymentSubmit = async () => {
@@ -988,39 +1021,34 @@ export default function Dashboard() {
                 }
             `}</style>
 
-            {/* POS Receipt (Hidden except during print) */}
-            <div id="pos-receipt" className="hidden print:block">
+            {/* POS Receipt Data (Used by iframe) */}
+            <div id="pos-receipt-content" className="hidden">
                 {selectedPrintInvoice && (
                     <div className="receipt-container">
-                        <div className="receipt-header">
-                            <h2 className="text-xl font-black m-0">H FORCE</h2>
-                            <p className="text-[10px] m-0">ใบกำกับภาษีอย่างย่อ / ใบรับเงิน</p>
-                            <p className="text-[10px] m-0">(SIMPLIFIED TAX INVOICE)</p>
+                        <div className="receipt-header text-center" style={{marginBottom: '4mm'}}>
+                            <h2 style={{margin:0, fontSize: '18px'}}>H FORCE</h2>
+                            <div style={{fontSize: '10px'}}>ใบกำกับภาษีอย่างย่อ (POS)</div>
                         </div>
                         
-                        <div className="receipt-divider"></div>
+                        <div className="divider"></div>
                         
                         <div className="receipt-row">
-                            <span>เลขที่ใบขาย:</span>
+                            <span>No:</span>
                             <span className="font-bold">{selectedPrintInvoice.invoice_no}</span>
                         </div>
                         <div className="receipt-row">
-                            <span>วันที่:</span>
+                            <span>Date:</span>
                             <span>{formatDate(selectedPrintInvoice.invoice_date)}</span>
                         </div>
                         <div className="receipt-row">
-                            <span>ลูกค้า:</span>
+                            <span>Cust:</span>
                             <span>{selectedPrintInvoice.customer_name}</span>
                         </div>
-                        <div className="receipt-row">
-                            <span>PIC:</span>
-                            <span>{selectedPrintInvoice.pic_name || '-'}</span>
-                        </div>
                         
-                        <div className="receipt-divider"></div>
+                        <div className="divider"></div>
                         
                         <div className="receipt-row font-bold">
-                            <span>รายการสินค้า</span>
+                            <span>รายการ</span>
                             <span>ยอดรวม</span>
                         </div>
                         
@@ -1029,19 +1057,18 @@ export default function Dashboard() {
                             <span>{formatCurrency(selectedPrintInvoice.total_amount)}</span>
                         </div>
                         
-                        <div className="receipt-divider"></div>
+                        <div className="divider"></div>
                         
                         <div className="receipt-total">
-                            <span>ยอดรวมทั้งสิ้น:</span>
+                            <span>ยอดรวมสุทธิ:</span>
                             <span>{formatCurrency(selectedPrintInvoice.total_amount)}</span>
                         </div>
                         
-                        <div className="receipt-divider"></div>
+                        <div className="divider"></div>
                         
-                        <div className="text-center text-[10px] mt-4">
-                            <p className="m-0">ราคารวมภาษีมูลค่าเพิ่มแล้ว</p>
-                            <p className="m-1 font-bold">*** ขอบคุณที่ใช้บริการ ***</p>
-                            <p className="mt-4 opacity-50">Powered by H Force Sales System</p>
+                        <div className="text-center" style={{marginTop: '5mm'}}>
+                            <p style={{margin:0}}>*** ขอบคุณที่ใช้บริการ ***</p>
+                            <p style={{marginTop: '4mm', opacity: 0.5, fontSize: '9px'}}>Powered by H Force Sales System</p>
                         </div>
                     </div>
                 )}
