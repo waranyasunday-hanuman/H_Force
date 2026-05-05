@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'H-Force Sale App',
   webDir: 'out',
   server: {
-    url: 'https://h-force-k8s9cnspp-waranyasunday-hanumans-projects.vercel.app',
+    url: 'https://h-force.vercel.app',
     cleartext: true
   }
 };
